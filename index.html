@@ -23,7 +23,7 @@
         
         @keyframes fall {
             0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
-            100% { transform: translateY(105vh) rotate(360deg); opacity: 0.6; }
+            100% { transform: translateY(105vh) rotate(360deg); opacity: 0.8; }
         }
         .deco-item {
             position: fixed;
@@ -38,6 +38,7 @@
 
     <div id="custom-bg-container" class="fixed inset-0 z-0 pointer-events-none overflow-hidden"></div>
     <div id="theme-decorations" class="fixed inset-0 z-5 pointer-events-none overflow-hidden"></div>
+    <audio id="theme-audio" loop class="hidden"></audio>
 
     <div id="app" class="h-full flex flex-col flex-1 backdrop-blur-sm bg-black/60 z-10 relative overflow-hidden">
         <div class="flex-1 flex items-center justify-center p-4 text-center">
@@ -129,7 +130,7 @@
             orientation_models: [],
             app_notifications: [],
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' },
-            site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)', bgMedia: '', mode: 'dark' },
+            site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)', bgMedia: '', bgAudio: '', mode: 'dark' },
             home_qr_image: ''
         };
 
@@ -172,7 +173,6 @@
                             await db.collection("leqg_data").doc(k).set({ value: cloudData[k] });
                         }
                     } else {
-                        // Nettoyage automatique des deux pages demandées
                         let cpDoc = await db.collection("leqg_data").doc("custom_pages").get();
                         if (cpDoc.exists) {
                             let pages = cpDoc.data().value || [];
@@ -269,9 +269,7 @@
 
             let bgC = document.getElementById('custom-bg-container');
             if (bgC) {
-                if (t.preset === 'noel') {
-                    bgC.innerHTML = `<div class="w-full h-full bg-cover bg-center opacity-30" style="background-image: url('https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&q=80&w=1200')"></div>`;
-                } else if (t.bgMedia) {
+                if (t.bgMedia) {
                     if (t.bgMedia.match(/\.(mp4|webm|ogg)$/i) || t.bgMedia.startsWith('data:video')) {
                         bgC.innerHTML = `<video autoplay muted loop class="w-full h-full object-cover opacity-40"><source src="${t.bgMedia}"></video>`;
                     } else {
@@ -282,25 +280,38 @@
                 }
             }
 
+            let audioEl = document.getElementById('theme-audio');
+            if (audioEl) {
+                if (t.bgAudio) {
+                    if (audioEl.src !== t.bgAudio) {
+                        audioEl.src = t.bgAudio;
+                        audioEl.play().catch(e => console.log("Audio autoplay bloqué"));
+                    }
+                } else {
+                    audioEl.pause();
+                    audioEl.src = '';
+                }
+            }
+
             let decoContainer = document.getElementById('theme-decorations');
             if (!decoContainer) return;
             decoContainer.innerHTML = '';
             
             let symbol = '';
-            if (t.preset === 'noel') symbol = '🎄';
+            if (t.preset === 'noel') symbol = '🎁';
             else if (t.preset === 'halloween') symbol = '🎃';
             else if (t.preset === 'paques') symbol = '🥚';
             else if (t.preset === 'automne') symbol = '🍂';
             else if (t.preset === 'hiver') symbol = '❄️';
             else if (t.preset === 'printemps') symbol = '🌸';
-            else if (t.preset === 'ete') symbol = '🟡';
+            else if (t.preset === 'ete') symbol = '☀️';
 
             if (symbol) {
-                let count = t.preset === 'ete' ? 30 : 15;
+                let count = t.preset === 'ete' ? 30 : 18;
                 for (let i = 0; i < count; i++) {
                     let item = document.createElement('div');
-                    item.className = 'deco-item ' + (t.preset === 'ete' ? 'text-xs text-amber-400/40' : 'text-xl');
-                    item.textContent = t.preset === 'noel' ? (Math.random() > 0.5 ? '🎄' : '🔴') : symbol;
+                    item.className = 'deco-item text-xl';
+                    item.textContent = symbol;
                     item.style.left = Math.random() * 100 + 'vw';
                     item.style.animationDuration = (Math.random() * 4 + 4) + 's';
                     item.style.animationDelay = (Math.random() * 5) + 's';
@@ -887,26 +898,6 @@
                             <div class="flex justify-between items-start">
                                 <div><h3 class="font-bold text-amber-300 text-sm">${e.title}</h3><span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-bold">${e.category || 'Sujet Type Bac'}</span></div>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                                <div class="p-3 bg-stone-900 rounded-xl border flex justify-between items-center">
-                                    <span>Sujet</span>
-                                    <div class="flex gap-2">
-                                        ${e.subjectType === 'url' ? `<a href="${e.subjectData}" target="_blank" class="px-2.5 py-1 bg-stone-950 text-amber-200 rounded font-bold">Ouvrir le lien</a>` : `
-                                            <button onclick="openFileViewer('${e.title} - Sujet', '${e.subjectData}', '${e.subjectType}')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Aperçu</button>
-                                            <a href="${e.subjectData}" download class="px-2.5 py-1 dyn-btn text-white rounded font-bold">Télécharger</a>
-                                        `}
-                                    </div>
-                                </div>
-                                <div class="p-3 bg-stone-900 rounded-xl border flex justify-between items-center">
-                                    <span>Corrigé</span>
-                                    <div class="flex gap-2">
-                                        ${e.corrType === 'url' ? `<a href="${e.corrData}" target="_blank" class="px-2.5 py-1 bg-stone-950 text-amber-200 rounded font-bold">Ouvrir le lien</a>` : `
-                                            <button onclick="openFileViewer('${e.title} - Corrigé', '${e.corrData}', '${e.corrType}')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Aperçu</button>
-                                            <a href="${e.corrData}" download class="px-2.5 py-1 dyn-btn text-white rounded font-bold">Télécharger</a>
-                                        `}
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     `).join('')}
                 </div>
@@ -969,11 +960,7 @@
             render();
         }
 
-        function renderFlashcardsTab(user) {
-            let decks = JSON.parse(localStorage.getItem('leqg_fc_decks_' + user.username) || '[]');
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">Flashcards (${decks.length})</h2></div></div>`;
-        }
-
+        function renderFlashcardsTab(user) { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Flashcards</h2></div>`; }
         function renderOrientationTab() { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">CV & Lettres</h2></div>`; }
         function renderSimulatorTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Simulateur</h2></div>`; }
         function renderMoodTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Humeur</h2></div>`; }
@@ -1039,19 +1026,23 @@
             await pushNotification("Nouveau Message", `${user.pseudo || user.username} : ${text.substring(0, 30)}...`);
         }
 
-        // --- ESPACE ADMIN COMPLET (RESTAURÉ) ---
+        // --- ESPACE ADMIN COMPLET (AVEC FORMATIONS & APPRÉCIATIONS) ---
         function renderAdmin() {
             return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-4 rounded-3xl flex gap-2 flex-wrap">
                     <button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes & Rôles</button>
                     <button onclick="state.adminSub='quizzes';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='quizzes'?'dyn-btn text-white':'bg-stone-900'}">Quiz Multi-questions</button>
                     <button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches & Docs</button>
-                    <button onclick="state.adminSub='theme';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='theme'?'dyn-btn text-white':'bg-stone-900'}">Thème, Compteur & QR</button>
+                    <button onclick="state.adminSub='formations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='formations'?'dyn-btn text-white':'bg-stone-900'}">Formations Post-Bac</button>
+                    <button onclick="state.adminSub='appreciations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='appreciations'?'dyn-btn text-white':'bg-stone-900'}">Appréciations</button>
+                    <button onclick="state.adminSub='theme';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='theme'?'dyn-btn text-white':'bg-stone-900'}">Thèmes, Média & QR</button>
                 </div>
                 ${state.adminSub==='users'?renderAdminUsers():''}
                 ${state.adminSub==='quizzes'?renderAdminQuizzes():''}
                 ${state.adminSub==='docs'?renderAdminDocs():''}
-                ${state.adminSub==='theme'?renderAdminTheme():''}
+                ${state.adminSub==='formations'?renderAdminFormations():''}
+                ${state.adminSub==='appreciations'?renderAdminAppreciations():''}
+                ${state.adminSub==='theme'?renderAdminThemeFull():''}
             </div>`;
         }
 
@@ -1062,8 +1053,8 @@
                 <form onsubmit="adminCreateUser(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-2">
                     <h4 class="font-bold text-amber-400">Créer un nouvel utilisateur</h4>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                        <input type="text" id="adm-new-user" required placeholder="Identifiant..." class="p-2 bg-stone-950 border rounded-xl">
-                        <input type="password" id="adm-new-pass" required placeholder="Mot de passe initial..." class="p-2 bg-stone-950 border rounded-xl">
+                        <input type="text" id="adm-new-user" required placeholder="Identifiant..." class="p-2 bg-stone-950 border rounded-xl text-white">
+                        <input type="password" id="adm-new-pass" required placeholder="Mot de passe initial..." class="p-2 bg-stone-950 border rounded-xl text-white">
                         <select id="adm-new-role" class="p-2 bg-stone-950 border rounded-xl text-amber-100">
                             <option value="student">Élève</option>
                             <option value="delegate">Délégué</option>
@@ -1079,7 +1070,7 @@
                                 <span class="font-bold text-white">${u.username}</span> (${u.realName || 'Sans nom'}) - <span class="text-amber-400 font-bold">${u.role}</span>
                             </div>
                             <div class="flex gap-2 items-center">
-                                <input type="text" id="reset_pass_${idx}" placeholder="Nouveau mdp" class="p-1.5 bg-stone-950 border rounded text-xs w-24">
+                                <input type="text" id="reset_pass_${idx}" placeholder="Nouveau mdp" class="p-1.5 bg-stone-950 border rounded text-xs w-24 text-white">
                                 <button onclick="adminResetPass(${idx})" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Réinit. MDP</button>
                                 <select onchange="adminChangeRole(${idx}, this.value)" class="p-1 bg-stone-950 border rounded text-xs text-amber-100">
                                     <option value="student" ${u.role==='student'?'selected':''}>Élève</option>
@@ -1235,102 +1226,6 @@
             }
         }
 
-        function renderAdminTheme() {
-            let t = DB.get('site_theme') || {};
-            let countdown = DB.get('countdown') || { title: '', date: '' };
-            let currentQr = DB.get('home_qr_image') || '';
-
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <h3 class="font-bold text-amber-300">Personnalisation du Compte à rebours</h3>
-                <form onsubmit="saveCountdownAdmin(event)" class="space-y-2">
-                    <input type="text" id="cd-title" value="${countdown.title}" required placeholder="Titre..." class="w-full p-2 bg-stone-900 border rounded-xl text-white">
-                    <input type="datetime-local" id="cd-date" value="${countdown.date}" required class="w-full p-2 bg-stone-900 border rounded-xl text-white">
-                    <button type="submit" class="dyn-btn w-full py-2 text-white font-bold rounded-xl">Mettre à jour le compteur</button>
-                </form>
-
-                <div class="border-t border-amber-900/40 pt-4 space-y-3">
-                    <h3 class="font-bold text-amber-300">Gestion du QR Code (Accueil)</h3>
-                    ${currentQr ? `<img src="${currentQr}" width="80" class="rounded-lg"/>` : ''}
-                    <div class="flex gap-2 items-center">
-                        <input type="file" id="admin-home-qr-file" accept="image/*" class="p-2 bg-stone-900 border rounded-xl text-xs flex-1 text-white">
-                        <button onclick="saveAdminHomeQr()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Mettre à jour</button>
-                    </div>
-                </div>
-
-                <div class="border-t border-amber-900/40 pt-4 space-y-3">
-                    <h3 class="font-bold text-amber-300">Thème & Décorations</h3>
-                    <select id="theme-preset" onchange="saveThemePreset(this.value)" class="w-full p-2 bg-stone-900 border rounded-xl text-white">
-                        <option value="standard" ${t.preset==='standard'?'selected':''}>Standard (Doré)</option>
-                        <option value="noel" ${t.preset==='noel'?'selected':''}>🎄 Noël / Hiver</option>
-                        <option value="halloween" ${t.preset==='halloween'?'selected':''}>🎃 Halloween</option>
-                        <option value="ete" ${t.preset==='ete'?'selected':''}>☀️ Été / Soleil</option>
-                    </select>
-                </div>
-            </div>`;
-        }
-
-        async function saveCountdownAdmin(e) {
-            e.preventDefault();
-            let title = document.getElementById('cd-title').value;
-            let date = document.getElementById('cd-date').value;
-            await DB.set('countdown', { title, date });
-            showToast("Succès", "Compte à rebours mis à jour !");
-            render();
-        }
-
-        async function saveThemePreset(preset) {
-            let t = DB.get('site_theme') || {};
-            t.preset = preset;
-            await DB.set('site_theme', t);
-            showToast("Thème mis à jour !", "");
-            render();
-        }
-
-        async function saveAdminHomeQr() {
-            let fileInput = document.getElementById('admin-home-qr-file');
-            if (fileInput.files && fileInput.files[0]) {
-                let reader = new FileReader();
-                reader.onload = async (ev) => {
-                    await DB.set('home_qr_image', ev.target.result);
-                    showToast("Succès", "QR code mis à jour !");
-                    render();
-                };
-                reader.readAsDataURL(fileInput.files[0]);
-            }
-        }
-
-        async function handleLogin(e) {
-            e.preventDefault();
-            let u = document.getElementById('l-user').value.trim();
-            let p = document.getElementById('l-pass').value.trim();
-            let user = (DB.get('users') || []).find(x => x.username === u && x.password === p);
-            if (user) { sessionStorage.setItem('leqg_current_user', JSON.stringify(user)); render(); }
-            else { alert("Identifiant ou mot de passe incorrect"); }
-        }
-
-        async function saveSetup(e) {
-            e.preventDefault();
-            let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
-            if(idx !== -1) {
-                if (user.role === 'admin') {
-                    let newUsername = document.getElementById('s-username').value.trim();
-                    if (newUsername) users[idx].username = newUsername;
-                }
-                users[idx].realName = document.getElementById('s-lastname').value;
-                users[idx].birthDate = document.getElementById('s-birth').value;
-                users[idx].password = document.getElementById('s-pass').value;
-                users[idx].mustChangePass = false;
-                await DB.set('users', users);
-                sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
-                render();
-            }
-        }
-
-        function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
-        window.onload = init;
-    </script>
-    <script>
-        // --- GESTION DES FORMATIONS (PANNEAU ADMIN & AFFICHAGE) ---
         function renderAdminFormations() {
             let list = DB.get('formations') || [];
             return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
@@ -1389,7 +1284,6 @@
             render();
         }
 
-        // --- GESTION DES APPRÉCIATIONS (ADMIN) ---
         function renderAdminAppreciations() {
             let users = DB.get('users') || [], allApps = DB.get('appreciations') || {};
             return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
@@ -1433,73 +1327,6 @@
             allApps[username].published = published;
             await DB.set('appreciations', allApps);
             showToast("Mis à jour", "Statut des appréciations modifié.");
-        }
-
-        // --- GESTION DES THÈMES, MÉDIAS ET ANIMATIONS ---
-        function applyTheme() {
-            let t = DB.get('site_theme') || {};
-            if (t.btnColor) document.documentElement.style.setProperty('--custom-btn-bg', t.btnColor);
-            if (t.cardBg) document.documentElement.style.setProperty('--custom-card-bg', t.cardBg);
-            if (t.borderColor) document.documentElement.style.setProperty('--custom-border-color', t.borderColor);
-            
-            let body = document.getElementById('body-theme');
-            if (t.mode === 'light') {
-                body.className = "bg-stone-100 text-stone-900 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden";
-            } else {
-                body.className = "bg-stone-950 text-amber-50 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden";
-            }
-
-            let bgC = document.getElementById('custom-bg-container');
-            if (bgC) {
-                if (t.bgMedia) {
-                    if (t.bgMedia.match(/\.(mp4|webm|ogg)$/i) || t.bgMedia.startsWith('data:video')) {
-                        bgC.innerHTML = `<video autoplay muted loop class="w-full h-full object-cover opacity-40"><source src="${t.bgMedia}"></video>`;
-                    } else {
-                        bgC.innerHTML = `<div class="w-full h-full bg-cover bg-center opacity-40" style="background-image: url('${t.bgMedia}')"></div>`;
-                    }
-                } else {
-                    bgC.innerHTML = '';
-                }
-            }
-
-            let audioEl = document.getElementById('theme-audio');
-            if (audioEl) {
-                if (t.bgAudio) {
-                    if (audioEl.src !== t.bgAudio) {
-                        audioEl.src = t.bgAudio;
-                        audioEl.play().catch(e => console.log("Audio autoplay bloqué par le navigateur"));
-                    }
-                } else {
-                    audioEl.pause();
-                    audioEl.src = '';
-                }
-            }
-
-            let decoContainer = document.getElementById('theme-decorations');
-            if (!decoContainer) return;
-            decoContainer.innerHTML = '';
-            
-            let symbol = '';
-            if (t.preset === 'noel') symbol = '🎁';
-            else if (t.preset === 'halloween') symbol = '🎃';
-            else if (t.preset === 'paques') symbol = '🥚';
-            else if (t.preset === 'automne') symbol = '🍂';
-            else if (t.preset === 'hiver') symbol = '❄️';
-            else if (t.preset === 'printemps') symbol = '🌸';
-            else if (t.preset === 'ete') symbol = '☀️';
-
-            if (symbol) {
-                let count = t.preset === 'ete' ? 30 : 18;
-                for (let i = 0; i < count; i++) {
-                    let item = document.createElement('div');
-                    item.className = 'deco-item text-xl';
-                    item.textContent = symbol;
-                    item.style.left = Math.random() * 100 + 'vw';
-                    item.style.animationDuration = (Math.random() * 4 + 4) + 's';
-                    item.style.animationDelay = (Math.random() * 5) + 's';
-                    decoContainer.appendChild(item);
-                }
-            }
         }
 
         function renderAdminThemeFull() {
@@ -1622,6 +1449,36 @@
                 reader.readAsDataURL(fileInput.files[0]);
             }
         }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            let u = document.getElementById('l-user').value.trim();
+            let p = document.getElementById('l-pass').value.trim();
+            let user = (DB.get('users') || []).find(x => x.username === u && x.password === p);
+            if (user) { sessionStorage.setItem('leqg_current_user', JSON.stringify(user)); render(); }
+            else { alert("Identifiant ou mot de passe incorrect"); }
+        }
+
+        async function saveSetup(e) {
+            e.preventDefault();
+            let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
+            if(idx !== -1) {
+                if (user.role === 'admin') {
+                    let newUsername = document.getElementById('s-username').value.trim();
+                    if (newUsername) users[idx].username = newUsername;
+                }
+                users[idx].realName = document.getElementById('s-lastname').value;
+                users[idx].birthDate = document.getElementById('s-birth').value;
+                users[idx].password = document.getElementById('s-pass').value;
+                users[idx].mustChangePass = false;
+                await DB.set('users', users);
+                sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
+                render();
+            }
+        }
+
+        function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
+        window.onload = init;
     </script>
 </body>
 </html>
