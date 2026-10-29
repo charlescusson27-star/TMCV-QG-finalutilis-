@@ -2171,5 +2171,67 @@
         function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
         window.onload = init;
     </script>
+    // --- BLOC CODE À AJOUTER DANS TON SCRIPT FIREBASE ---
+
+// 1. Enregistre l'URL du lien Google Drive sur Firebase
+async function saveAdminAppUrl(e) {
+    e.preventDefault();
+    let linkVal = document.getElementById('adm-app-link').value.trim();
+    
+    await DB.set('app_file_url', linkVal);
+    await DB.set('app_file_data', ''); // Nettoie l'ancien fichier uploadé pour privilégier le lien
+    
+    showToast("Lien enregistré !", "Le lien Google Drive a été synchronisé sur Firebase pour toute la classe.");
+}
+
+// 2. Enregistre le fichier uploadé si l'admin préfère cette option
+async function saveAdminAppFile(e) {
+    e.preventDefault();
+    let fileInp = document.getElementById('adm-app-file');
+    
+    if (fileInp.files && fileInp.files[0]) {
+        let file = fileInp.files[0];
+        let reader = new FileReader();
+        
+        reader.onload = async (ev) => {
+            await DB.set('app_file_data', ev.target.result);
+            await DB.set('app_file_name', file.name);
+            await DB.set('app_file_url', ''); // Nettoie l'URL si on utilise un fichier uploadé
+            
+            showToast("Fichier enregistré !", "Le fichier de l'application est sauvegardé sur Firebase.");
+        };
+        reader.readAsDataURL(file);
+    }
+}
+
+// 3. Action lors du clic sur le bouton "App Mobile" en haut du site
+function triggerAppDownload() {
+    let fileUrl = DB.get('app_file_url');
+    let fileData = DB.get('app_file_data');
+    let guide = DB.get('app_install_guide') || 'Consignes d\'installation.';
+
+    document.getElementById('app-install-instructions').innerHTML = guide.replace(/\n/g, '<br>');
+    toggleModal('app-install-modal', true);
+
+    // Si un lien Google Drive a été renseigné, on l'ouvre dans un nouvel onglet pour télécharger là-bas
+    if (fileUrl) {
+        window.open(fileUrl, '_blank');
+        showToast("Redirection", "Ouverture de la page de téléchargement...");
+    } 
+    // Sinon si un fichier a été uploadé directement, on le télécharge
+    else if (fileData) {
+        let fileName = DB.get('app_file_name') || 'LE_QG_App.apk';
+        let a = document.createElement('a');
+        a.href = fileData;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        showToast("Téléchargement", "Le fichier se télécharge...");
+    } 
+    else {
+        showToast("Note", "Aucun fichier ni lien n'a encore été configuré par l'administrateur.");
+    }
+}
 </body>
 </html>
