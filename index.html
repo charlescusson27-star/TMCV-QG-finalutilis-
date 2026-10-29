@@ -11,6 +11,9 @@
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
 
+    <!-- SheetJS CDN pour l'export Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
     <style>
         :root {
             --custom-btn-bg: #d97706;
@@ -103,7 +106,6 @@
             flashcards_decks: [],
             personal_notes: {},
             app_notifications: [],
-            moods: {},
             user_scores: {},
             home_qr_image: '',
             hidden_tabs: [],
@@ -130,6 +132,7 @@
             activeConvFilter: null,
             activeDeckId: null,
             activeNoteId: null,
+            activeQuizId: null,
             mailSubTab: 'inbox'
         };
 
@@ -320,8 +323,8 @@
                 <div class="flex-1 flex overflow-hidden relative">
                     <aside class="fixed inset-y-0 left-0 z-30 w-64 bg-stone-950/95 border-r transform ${state.sidebar ? 'translate-x-0' : '-translate-x-full'} transition-transform flex flex-col p-4 pt-16 space-y-1 text-xs overflow-y-auto">
                         ${!hidden.includes('home') ? sbBtn('home', 'Accueil & QR Code', 'house') : ''}
+                        ${!hidden.includes('quizzes') ? sbBtn('quizzes', 'Quiz & Évaluations', 'circle-question') : ''}
                         ${!hidden.includes('appreciations') ? sbBtn('appreciations', 'Mes Appréciations', 'file-contract') : ''}
-                        ${!hidden.includes('mood') ? sbBtn('mood', 'Mur des Humeurs', 'face-smile') : ''}
                         ${!hidden.includes('notifs') ? sbBtn('notifs', 'Centre Notifications', 'bell') : ''}
                         ${!hidden.includes('polls') ? sbBtn('polls', 'Sondages en Direct', 'square-poll-vertical') : ''}
                         ${!hidden.includes('games') ? sbBtn('games', 'Mots Croisés MCV', 'puzzle-piece') : ''}
@@ -349,8 +352,8 @@
 
         function renderContent(user) {
             if (state.tab === 'home') return renderHome();
+            if (state.tab === 'quizzes') return renderQuizzesTab(user);
             if (state.tab === 'appreciations') return renderUserAppreciations(user);
-            if (state.tab === 'mood') return renderMoodTab(user);
             if (state.tab === 'notifs') return renderNotifsSection(user);
             if (state.tab === 'polls') return renderPollsTab(user);
             if (state.tab === 'games') return renderCrosswordsSection();
@@ -394,6 +397,197 @@
             </div>`;
         }
 
+        // --- QUIZ UTILISATEUR & PROGRESSION ---
+        function renderQuizzesTab(user) {
+            let quizzes = DB.get('quizzes') || [];
+            let submissions = DB.get('quiz_submissions') || {};
+            let mySubmissions = submissions[user.username] || {};
+
+            if (state.activeQuizId !== null) {
+                let quiz = quizzes.find(q => q.id === state.activeQuizId);
+                if (quiz) return renderQuizPlayer(user, quiz);
+            }
+
+            let totalQuizzesDone = Object.keys(mySubmissions).length;
+            let totalQuestions = 0;
+            let totalCorrect = 0;
+            let subjectStats = {};
+
+            quizzes.forEach(q => {
+                let subject = q.subject || 'Général';
+                if (!subjectStats[subject]) subjectStats[subject] = { total: 0, correct: 0, done: 0 };
+                
+                if (mySubmissions[q.id]) {
+                    let sub = mySubmissions[q.id];
+                    totalQuestions += sub.total;
+                    totalCorrect += sub.score;
+                    subjectStats[subject].total += sub.total;
+                    subjectStats[subject].correct += sub.score;
+                    subjectStats[subject].done++;
+                }
+            });
+
+            let globalPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
+            let scores = DB.get('user_scores') || {};
+            let myPoints = scores[user.username] || 0;
+
+            return `<div class="max-w-4xl mx-auto space-y-6 text-xs">
+                <!-- VUE PROGRESSION GÉNÉRALE ET MATIÈRES -->
+                <div class="dyn-card border p-6 rounded-3xl space-y-4 shadow-xl">
+                    <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                        <div>
+                            <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-graduation-cap mr-2"></i>Ma Progression & Quiz</h2>
+                            <p class="text-amber-200/70">Répondez aux quiz à l'infini pour gagner des points au classement classe !</p>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs text-amber-300 font-bold">Score Classe :</span>
+                            <div class="text-2xl font-black text-white">${myPoints} pts</div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="p-4 bg-stone-900 rounded-2xl border text-center space-y-1">
+                            <div class="text-amber-400 font-bold">Réussite Globale</div>
+                            <div class="text-2xl font-black text-white">${globalPct}%</div>
+                            <div class="text-[10px] text-amber-200/60">${totalCorrect} / ${totalQuestions} réponses correctes</div>
+                        </div>
+                        <div class="p-4 bg-stone-900 rounded-2xl border text-center space-y-1">
+                            <div class="text-amber-400 font-bold">Quiz Complétés</div>
+                            <div class="text-2xl font-black text-white">${totalQuizzesDone} / ${quizzes.length}</div>
+                            <div class="text-[10px] text-amber-200/60">Entraînements illimités</div>
+                        </div>
+                        <div class="p-4 bg-stone-900 rounded-2xl border text-center space-y-1">
+                            <div class="text-amber-400 font-bold">Matières évaluées</div>
+                            <div class="text-2xl font-black text-white">${Object.keys(subjectStats).length}</div>
+                            <div class="text-[10px] text-amber-200/60">Droit, Éco, Vente...</div>
+                        </div>
+                    </div>
+
+                    <!-- PROGRESSION PAR MATIÈRE -->
+                    <div class="space-y-2 pt-2">
+                        <h3 class="font-bold text-amber-300 text-xs">Progression par matière :</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            ${Object.keys(subjectStats).length === 0 ? '<p class="text-amber-200/50 italic">Aucune donnée de matière disponible.</p>' : ''}
+                            ${Object.entries(subjectStats).map(([subj, stats]) => {
+                                let pct = stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0;
+                                return `
+                                    <div class="p-3 bg-stone-900/80 rounded-xl border space-y-1">
+                                        <div class="flex justify-between font-bold text-amber-100">
+                                            <span>${subj}</span>
+                                            <span>${pct}% (${stats.correct}/${stats.total})</span>
+                                        </div>
+                                        <div class="w-full bg-stone-950 h-2 rounded-full overflow-hidden border">
+                                            <div class="bg-amber-500 h-full" style="width: ${pct}%"></div>
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LISTE DES QUIZ PAR QUIZ -->
+                <div class="space-y-3">
+                    <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-list-check mr-2"></i>Liste des Quiz disponibles</h3>
+                    ${quizzes.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucun quiz publié par l\'administration pour le moment.</p>' : ''}
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        ${quizzes.map(q => {
+                            let sub = mySubmissions[q.id];
+                            let pct = sub ? Math.round((sub.score / sub.total) * 100) : null;
+                            return `
+                                <div class="dyn-card border p-5 rounded-2xl flex flex-col justify-between space-y-3">
+                                    <div>
+                                        <div class="flex justify-between items-start gap-2">
+                                            <h4 class="font-bold text-amber-300 text-sm">${q.title}</h4>
+                                            <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold text-[10px]">${q.subject || 'Général'}</span>
+                                        </div>
+                                        <p class="text-[10px] text-amber-200/60 mt-1">${q.questions.length} question(s)</p>
+                                    </div>
+                                    
+                                    <div class="flex justify-between items-center border-t border-amber-900/30 pt-3">
+                                        <div>
+                                            ${sub !== undefined ? `
+                                                <span class="text-[10px] text-amber-200 font-bold">Dernier résultat :</span>
+                                                <div class="text-xs font-black text-amber-400">${sub.score} / ${sub.total} (${pct}%)</div>
+                                            ` : '<span class="text-[10px] text-amber-200/40 italic">Non effectué</span>'}
+                                        </div>
+                                        <button onclick="state.activeQuizId='${q.id}';render()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl text-xs">
+                                            ${sub !== undefined ? 'Refaire le Quiz' : 'Commencer'}
+                                        </button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function renderQuizPlayer(user, quiz) {
+            return `<div class="max-w-2xl mx-auto dyn-card border p-8 rounded-3xl space-y-6 text-xs shadow-2xl">
+                <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                    <div>
+                        <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold text-[10px]">${quiz.subject || 'Général'}</span>
+                        <h2 class="text-lg font-black text-amber-400 mt-1">${quiz.title}</h2>
+                    </div>
+                    <button onclick="state.activeQuizId=null;render()" class="px-3 py-1 bg-stone-900 text-amber-200 border rounded-xl font-bold">Quitter</button>
+                </div>
+
+                <form onsubmit="submitQuizForm(event, '${quiz.id}')" class="space-y-6">
+                    ${quiz.questions.map((q, qIdx) => `
+                        <div class="p-4 bg-stone-900/80 rounded-2xl border space-y-3">
+                            <h4 class="font-bold text-amber-200 text-sm">Question ${qIdx + 1} : ${q.text}</h4>
+                            <div class="space-y-2">
+                                ${q.options.map((opt, oIdx) => `
+                                    <label class="flex items-center gap-3 p-3 bg-stone-950 border rounded-xl cursor-pointer hover:border-amber-400 transition">
+                                        <input type="radio" name="q_${qIdx}" value="${oIdx}" required class="accent-amber-500 w-4 h-4">
+                                        <span class="text-amber-100 font-medium">${opt}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `).join('')}
+
+                    <button type="submit" class="w-full py-3 dyn-btn text-white font-black text-sm rounded-xl shadow-lg">Valider mes réponses</button>
+                </form>
+            </div>`;
+        }
+
+        async function submitQuizForm(e, quizId) {
+            e.preventDefault();
+            let user = getCurrentUser();
+            let quizzes = DB.get('quizzes') || [];
+            let quiz = quizzes.find(q => q.id === quizId);
+            if (!quiz) return;
+
+            let score = 0;
+            quiz.questions.forEach((q, qIdx) => {
+                let selected = document.querySelector(`input[name="q_${qIdx}"]:checked`);
+                if (selected && parseInt(selected.value) === parseInt(q.correct)) {
+                    score++;
+                }
+            });
+
+            let submissions = DB.get('quiz_submissions') || {};
+            if (!submissions[user.username]) submissions[user.username] = {};
+            
+            let previousScore = submissions[user.username][quizId] ? submissions[user.username][quizId].score : 0;
+            submissions[user.username][quizId] = { score, total: quiz.questions.length, date: new Date().toLocaleDateString('fr-FR') };
+            await DB.set('quiz_submissions', submissions);
+
+            // Mise à jour des points au classement
+            let pointsGained = Math.max(0, score - previousScore) * 10;
+            if (pointsGained > 0) {
+                let scores = DB.get('user_scores') || {};
+                scores[user.username] = (scores[user.username] || 0) + pointsGained;
+                await DB.set('user_scores', scores);
+            }
+
+            state.activeQuizId = null;
+            showToast("Quiz terminé !", `Votre score : ${score} / ${quiz.questions.length}. ${pointsGained > 0 ? `+${pointsGained} pts au classement !` : ''}`);
+            render();
+        }
+
         // --- NOTIFICATIONS SECTION ---
         function renderNotifsSection(user) {
             let notifs = DB.get('app_notifications') || [];
@@ -420,54 +614,6 @@
                     `).join('')}
                 </div>
             </div>`;
-        }
-
-        // --- MUR DES HUMEURS ---
-        function renderMoodTab(user) {
-            let moods = DB.get('moods') || {};
-            let emojis = ['😀', '🚀', '💡', '🔥', '😴', '🧠', '🎯', '☕', '😎', '📚'];
-            return `<div class="max-w-2xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3 text-center">
-                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-face-smile mr-2"></i>Mur des Humeurs de la Classe</h2>
-                    <p class="text-amber-200/70">Choisis ton emoji et décris ton humeur du jour :</p>
-                    <form onsubmit="setMoodForm(event)" class="space-y-3 max-w-md mx-auto pt-2">
-                        <div class="flex justify-center gap-2 flex-wrap">
-                            ${emojis.map(e => `
-                                <label class="cursor-pointer">
-                                    <input type="radio" name="mood_emoji" value="${e}" class="peer hidden" required>
-                                    <span class="p-3 bg-stone-900 border rounded-2xl text-xl inline-block peer-checked:border-amber-400 peer-checked:bg-amber-500/20 hover:scale-110 transition">${e}</span>
-                                </label>
-                            `).join('')}
-                        </div>
-                        <input type="text" id="mood-text" required placeholder="Ton humeur en quelques mots (ex: Motivé pour réussir)..." class="w-full p-3 bg-stone-900 border rounded-xl text-amber-100">
-                        <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Partager mon humeur</button>
-                    </form>
-                </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    ${Object.keys(moods).length === 0 ? '<p class="text-amber-200/50 text-center col-span-2">Aucune humeur partagée aujourd\'hui.</p>' : ''}
-                    ${Object.entries(moods).map(([uname, data]) => `
-                        <div class="dyn-card border p-4 rounded-2xl flex items-center gap-4">
-                            <span class="text-4xl">${data.emoji}</span>
-                            <div class="overflow-hidden">
-                                <h4 class="font-bold text-amber-100">${uname}</h4>
-                                <p class="text-xs text-amber-300 font-medium italic">"${data.text}"</p>
-                                <p class="text-[9px] text-amber-200/50 mt-1">${data.date}</p>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
-        }
-
-        async function setMoodForm(e) {
-            e.preventDefault();
-            let user = getCurrentUser();
-            let emoji = document.querySelector('input[name="mood_emoji"]:checked').value;
-            let text = document.getElementById('mood-text').value.trim();
-            let moods = DB.get('moods') || {};
-            moods[user.username] = { emoji, text, date: new Date().toLocaleDateString('fr-FR') };
-            await DB.set('moods', moods);
-            showToast("Humeur enregistrée !", "Ton humeur est en ligne sur le mur.");
         }
 
         // --- SONDAGES EN DIRECT ---
@@ -528,7 +674,7 @@
             showToast("Vote enregistré !", "Merci d'avoir participé au sondage.");
         }
 
-        // --- MOTS CROISÉS (REMPLACE LES JEUX) ---
+        // --- MOTS CROISÉS ---
         function renderCrosswordsSection() {
             return `
                 <div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl max-w-4xl mx-auto text-xs">
@@ -616,7 +762,7 @@
                         <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
                             ${userNotes.length === 0 ? '<p class="text-amber-200/50 italic">Aucun document.</p>' : ''}
                             ${userNotes.map(n => `
-                                <div onclick="state.activeNoteId='${n.id}';render()" class="p-3 rounded-2xl border cursor-pointer ${activeNote && activeNote.id===n.id?'bg-amber-500/20 border-amber-400':'bg-stone-900 border-amber-900/30'}">
+                                <div onclick="selectNote('${n.id}')" class="p-3 rounded-2xl border cursor-pointer ${activeNote && activeNote.id===n.id?'bg-amber-500/20 border-amber-400':'bg-stone-900 border-amber-900/30'}">
                                     <h4 class="font-bold text-amber-100">${n.title || 'Sans titre'}</h4>
                                     <p class="text-[10px] text-amber-200/60">Modifié le ${n.date}</p>
                                 </div>
@@ -634,7 +780,13 @@
                         </div>
                     </div>
                 </div>
-            `;
+            </div>`;
+        }
+
+        function selectNote(noteId) {
+            state.activeNoteId = noteId;
+            let container = document.getElementById('app');
+            if (container) render();
         }
 
         async function createNewNote() {
@@ -650,10 +802,13 @@
 
         async function saveActiveNote(noteId) {
             let user = getCurrentUser();
-            let title = document.getElementById('doc-title').value;
-            let content = document.getElementById('doc-content').value;
+            let titleEl = document.getElementById('doc-title');
+            let contentEl = document.getElementById('doc-content');
+            if (!titleEl || !contentEl) return;
+            let title = titleEl.value;
+            let content = contentEl.value;
             let notes = DB.get('personal_notes') || {};
-            let idx = notes[user.username].findIndex(n => n.id === noteId);
+            let idx = (notes[user.username] || []).findIndex(n => n.id === noteId);
             if (idx !== -1) {
                 notes[user.username][idx].title = title;
                 notes[user.username][idx].content = content;
@@ -667,7 +822,7 @@
             if (!confirm("Voulez-vous supprimer ce document ?")) return;
             let user = getCurrentUser();
             let notes = DB.get('personal_notes') || {};
-            notes[user.username] = notes[user.username].filter(n => n.id !== noteId);
+            notes[user.username] = (notes[user.username] || []).filter(n => n.id !== noteId);
             await DB.set('personal_notes', notes);
             state.activeNoteId = null;
             showToast("Document supprimé", "");
@@ -718,7 +873,7 @@
                         </div>
                     `).join('')}
                 </div>
-            `;
+            </div>`;
         }
 
         function addFlashcardRow() {
@@ -1055,9 +1210,9 @@
                                 ` : '<p class="text-amber-200/40 italic py-4">L\'appréciation de ce trimestre n\'a pas encore été publiée.</p>'}
                             </div>
                         `;
-                    }).join('')}
+                    })}
                 </div>
-            `;
+            </div>`;
         }
 
         // --- PANNEAU ADMINISTRATEUR NAVIGABLE ---
@@ -1073,13 +1228,14 @@
                         <!-- BARRE DE NAVIGATION ADMIN -->
                         <div class="flex flex-wrap gap-2 border-t border-amber-900/40 pt-3">
                             ${adminNavBtn('users', 'Comptes Users', 'users-gear')}
+                            ${adminNavBtn('quizzes', 'Création Quiz', 'circle-question')}
                             ${adminNavBtn('appreciations', 'Appréciations', 'file-signature')}
                             ${adminNavBtn('pubs', 'Publications', 'file-pdf')}
                             ${adminNavBtn('formations', 'Formations', 'graduation-cap')}
                             ${adminNavBtn('polls', 'Sondages', 'square-poll-vertical')}
                             ${adminNavBtn('themes', 'Thèmes & Saisons', 'palette')}
                             ${adminNavBtn('surveillance', 'Surveillance MP', 'user-secret')}
-                            ${adminNavBtn('export', 'Export Données', 'download')}
+                            ${adminNavBtn('export', 'Export Excel', 'file-excel')}
                             ${adminNavBtn('qrcode', 'QR Code', 'qrcode')}
                         </div>
                     </div>
@@ -1130,6 +1286,51 @@
                                 </div>
                             `).join('')}
                         </div>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'quizzes') {
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-circle-question mr-2"></i>Créer et Publier un Nouveau Quiz</h3>
+                        <form onsubmit="adminCreateQuiz(event)" class="space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Titre du Quiz :</label>
+                                    <input type="text" id="quiz-title" required placeholder="Titre (ex: Contrats commerciaux)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Matière :</label>
+                                    <input type="text" id="quiz-subject" required placeholder="Matière (ex: Droit, Vente, Éco)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                </div>
+                            </div>
+
+                            <div id="quiz-questions-builder" class="space-y-4 pt-2">
+                                <div class="p-4 bg-stone-900/80 rounded-2xl border space-y-3 quiz-q-block">
+                                    <h4 class="font-bold text-amber-400 text-xs">Question 1</h4>
+                                    <input type="text" placeholder="Intitulé de la question..." required class="w-full p-2 bg-stone-950 border rounded-xl text-amber-100 q-text">
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <input type="text" placeholder="Option A" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-0">
+                                        <input type="text" placeholder="Option B" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-1">
+                                        <input type="text" placeholder="Option C" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-2">
+                                        <input type="text" placeholder="Option D" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-3">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[11px] font-bold text-amber-300">Bonne réponse :</label>
+                                        <select class="p-2 bg-stone-950 border rounded-xl text-amber-400 font-bold q-correct">
+                                            <option value="0">Option A</option>
+                                            <option value="1">Option B</option>
+                                            <option value="2">Option C</option>
+                                            <option value="3">Option D</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="button" onclick="addAdminQuizQuestionRow()" class="px-4 py-2 bg-stone-800 text-amber-300 font-bold rounded-xl text-xs"><i class="fa-solid fa-plus mr-1"></i> Ajouter une question</button>
+                            <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-xs">Publier le Quiz pour les Élèves</button>
+                        </form>
                     </div>
                 `;
             }
@@ -1285,19 +1486,28 @@
             if (state.adminSub === 'export') {
                 return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-download mr-2"></i>Export des Données de la Plateforme</h3>
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-file-excel mr-2"></i>Export des Données au Format Excel (.xlsx)</h3>
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <button onclick="exportData('all_accounts')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left"><i class="fa-solid fa-users mr-2"></i> Exporter tous les comptes</button>
-                            <button onclick="exportData('polls')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left"><i class="fa-solid fa-square-poll-vertical mr-2"></i> Exporter les sondages</button>
-                            <button onclick="exportData('ideas')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left"><i class="fa-solid fa-lightbulb mr-2"></i> Exporter la boîte à idées</button>
+                            <button onclick="exportExcelData('all_accounts')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left flex items-center justify-between">
+                                <span><i class="fa-solid fa-users text-green-500 mr-2"></i> Exporter tous les comptes</span>
+                                <i class="fa-solid fa-download text-xs"></i>
+                            </button>
+                            <button onclick="exportExcelData('polls')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left flex items-center justify-between">
+                                <span><i class="fa-solid fa-square-poll-vertical text-green-500 mr-2"></i> Exporter les sondages</span>
+                                <i class="fa-solid fa-download text-xs"></i>
+                            </button>
+                            <button onclick="exportExcelData('ideas')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left flex items-center justify-between">
+                                <span><i class="fa-solid fa-lightbulb text-green-500 mr-2"></i> Exporter la boîte à idées</span>
+                                <i class="fa-solid fa-download text-xs"></i>
+                            </button>
                         </div>
                         <div class="pt-4 border-t border-amber-900/40 space-y-2">
-                            <h4 class="font-bold text-amber-300">Exporter un compte spécifique :</h4>
+                            <h4 class="font-bold text-amber-300">Exporter un compte spécifique (Excel) :</h4>
                             <div class="flex gap-2">
                                 <select id="export-username-select" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold flex-1">
                                     ${users.map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.username})</option>`).join('')}
                                 </select>
-                                <button onclick="exportSingleAccount()" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">Exporter ce compte</button>
+                                <button onclick="exportSingleAccountExcel()" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">Exporter ce compte</button>
                             </div>
                         </div>
                     </div>
@@ -1318,6 +1528,156 @@
             }
 
             return `<div class="dyn-card border p-6 rounded-3xl text-center text-amber-200/50">Sélectionnez une option dans le panneau d'administration.</div>`;
+        }
+
+        function addAdminQuizQuestionRow() {
+            let container = document.getElementById('quiz-questions-builder');
+            let qCount = container.children.length + 1;
+            let div = document.createElement('div');
+            div.className = "p-4 bg-stone-900/80 rounded-2xl border space-y-3 quiz-q-block";
+            div.innerHTML = `
+                <h4 class="font-bold text-amber-400 text-xs">Question ${qCount}</h4>
+                <input type="text" placeholder="Intitulé de la question..." required class="w-full p-2 bg-stone-950 border rounded-xl text-amber-100 q-text">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="text" placeholder="Option A" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-0">
+                    <input type="text" placeholder="Option B" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-1">
+                    <input type="text" placeholder="Option C" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-2">
+                    <input type="text" placeholder="Option D" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-3">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-amber-300">Bonne réponse :</label>
+                    <select class="p-2 bg-stone-950 border rounded-xl text-amber-400 font-bold q-correct">
+                        <option value="0">Option A</option>
+                        <option value="1">Option B</option>
+                        <option value="2">Option C</option>
+                        <option value="3">Option D</option>
+                    </select>
+                </div>
+            `;
+            container.appendChild(div);
+        }
+
+        async function adminCreateQuiz(e) {
+            e.preventDefault();
+            let title = document.getElementById('quiz-title').value.trim();
+            let subject = document.getElementById('quiz-subject').value.trim();
+            let blocks = document.querySelectorAll('.quiz-q-block');
+            let questions = [];
+
+            blocks.forEach(b => {
+                let text = b.querySelector('.q-text').value.trim();
+                let o0 = b.querySelector('.q-opt-0').value.trim();
+                let o1 = b.querySelector('.q-opt-1').value.trim();
+                let o2 = b.querySelector('.q-opt-2').value.trim();
+                let o3 = b.querySelector('.q-opt-3').value.trim();
+                let correct = parseInt(b.querySelector('.q-correct').value);
+
+                let options = [o0, o1];
+                if (o2) options.push(o2);
+                if (o3) options.push(o3);
+
+                if (text && options.length >= 2) {
+                    questions.push({ text, options, correct });
+                }
+            });
+
+            if (questions.length === 0) return alert("Ajoutez au moins une question valide !");
+
+            let quizzes = DB.get('quizzes') || [];
+            let newQuiz = {
+                id: 'quiz_' + Date.now(),
+                title,
+                subject,
+                questions
+            };
+            quizzes.unshift(newQuiz);
+            await DB.set('quizzes', quizzes);
+            showToast("Quiz publié !", "Le quiz est désormais accessible dans l'onglet Quiz.");
+        }
+
+        // --- EXPORTATIONS EXCEL (.XLSX) VIA SHEETJS ---
+        function exportExcelData(type) {
+            let wb = XLSX.utils.book_new();
+            let data = [];
+
+            if (type === 'all_accounts') {
+                let users = DB.get('users') || [];
+                let submissions = DB.get('quiz_submissions') || {};
+                data = users.map(u => {
+                    let userSubs = submissions[u.username] || {};
+                    let totalQ = 0, totalCorrect = 0;
+                    Object.values(userSubs).forEach(s => { totalQ += s.total; totalCorrect += s.score; });
+                    let progText = totalQ > 0 ? `${Math.round((totalCorrect / totalQ) * 100)}% (${totalCorrect}/${totalQ})` : 'Aucun quiz effectué';
+
+                    return {
+                        "Identifiant": u.username,
+                        "Mot de passe": u.password,
+                        "Progression au Quiz": progText,
+                        "Date de naissance": u.birthDate || 'Non renseignée',
+                        "Adresse Mail": u.email || 'Non renseignée'
+                    };
+                });
+                let ws = XLSX.utils.json_to_sheet(data);
+                XLSX.utils.book_append_sheet(wb, ws, "Comptes Utilisateurs");
+                XLSX.writeFile(wb, "leqg_comptes_utilisateurs.xlsx");
+            } 
+            else if (type === 'polls') {
+                let polls = DB.get('polls') || [];
+                data = polls.map(p => {
+                    let totalVoters = p.voters ? p.voters.length : 0;
+                    let resultStr = p.options.map(o => `${o.text}: ${o.votes || 0} vote(s)`).join(' | ');
+                    return {
+                        "Intitulé": p.question,
+                        "Nombre de votants": totalVoters,
+                        "Résultat": resultStr
+                    };
+                });
+                let ws = XLSX.utils.json_to_sheet(data);
+                XLSX.utils.book_append_sheet(wb, ws, "Sondages");
+                XLSX.writeFile(wb, "leqg_sondages_resultats.xlsx");
+            } 
+            else if (type === 'ideas') {
+                let ideas = DB.get('ideas_board') || [];
+                data = ideas.map(i => ({
+                    "Titre de l'idée": i.title,
+                    "Description": i.description,
+                    "Nom de la personne": i.author,
+                    "Résultat": `${i.votes || 0} vote(s)`
+                }));
+                let ws = XLSX.utils.json_to_sheet(data);
+                XLSX.utils.book_append_sheet(wb, ws, "Boîte à Idées");
+                XLSX.writeFile(wb, "leqg_boite_a_idees.xlsx");
+            }
+
+            showToast("Export Excel réussi !", "Fichier .xlsx téléchargé.");
+        }
+
+        function exportSingleAccountExcel() {
+            let uname = document.getElementById('export-username-select').value;
+            let users = DB.get('users') || [];
+            let u = users.find(x => x.username === uname);
+            if (!u) return;
+
+            let submissions = DB.get('quiz_submissions') || {};
+            let userSubs = submissions[u.username] || {};
+            let totalQ = 0, totalCorrect = 0;
+            Object.values(userSubs).forEach(s => { totalQ += s.total; totalCorrect += s.score; });
+            let progText = totalQ > 0 ? `${Math.round((totalCorrect / totalQ) * 100)}% (${totalCorrect}/${totalQ})` : 'Aucun quiz effectué';
+
+            let data = [{
+                "Identifiant": u.username,
+                "Mot de passe": u.password,
+                "Progression au Quiz": progText,
+                "Date de naissance": u.birthDate || 'Non renseignée',
+                "Adresse Mail": u.email || 'Non renseignée'
+            }];
+
+            let wb = XLSX.utils.book_new();
+            let ws = XLSX.utils.json_to_sheet(data);
+            XLSX.utils.book_append_sheet(wb, ws, `Compte ${uname}`);
+            XLSX.writeFile(wb, `leqg_compte_${uname}.xlsx`);
+
+            showToast("Export Excel réussi !", `Fichier pour le compte ${uname} téléchargé.`);
         }
 
         async function adminCreatePoll(e) {
@@ -1361,31 +1721,6 @@
                 await DB.set('home_qr_image', qrData);
                 showToast("QR Code mis à jour !", "");
             }
-        }
-
-        function exportData(type) {
-            let dataToExport = DB.get(type === 'all_accounts' ? 'users' : type);
-            let blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
-            let url = URL.createObjectURL(blob);
-            let a = document.createElement('a');
-            a.href = url;
-            a.download = `leqg_${type}_export.json`;
-            a.click();
-            showToast("Export réussi !", "Le fichier a été téléchargé.");
-        }
-
-        function exportSingleAccount() {
-            let uname = document.getElementById('export-username-select').value;
-            let users = DB.get('users') || [];
-            let u = users.find(x => x.username === uname);
-            if (!u) return;
-            let blob = new Blob([JSON.stringify(u, null, 2)], { type: 'application/json' });
-            let url = URL.createObjectURL(blob);
-            let a = document.createElement('a');
-            a.href = url;
-            a.download = `leqg_account_${uname}.json`;
-            a.click();
-            showToast("Export du compte réussi !", "");
         }
 
         async function saveAppreciation(username, tKey) {
