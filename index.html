@@ -1329,5 +1329,299 @@
         function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
         window.onload = init;
     </script>
+    <script>
+        // --- GESTION DES FORMATIONS (PANNEAU ADMIN & AFFICHAGE) ---
+        function renderAdminFormations() {
+            let list = DB.get('formations') || [];
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
+                <h3 class="font-bold text-amber-300 text-sm">Gestion des Formations Post-Bac</h3>
+                <form onsubmit="adminAddFormation(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
+                    <h4 class="font-bold text-amber-400">Ajouter une formation</h4>
+                    <input type="text" id="fm-title" required placeholder="Intitulé de la formation (ex: BUT Carrières Juridiques)..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                        <input type="text" id="fm-est" required placeholder="Établissement..." class="p-2.5 bg-stone-950 border rounded-xl text-white">
+                        <input type="text" id="fm-city" required placeholder="Ville..." class="p-2.5 bg-stone-950 border rounded-xl text-white">
+                        <select id="fm-type" class="p-2.5 bg-stone-950 border rounded-xl text-amber-100">
+                            <option value="Initial">Initial</option>
+                            <option value="Alternance">Alternance</option>
+                            <option value="Apprentissage">Apprentissage</option>
+                        </select>
+                    </div>
+                    <textarea id="fm-desc" required placeholder="Description de la formation..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white h-20 resize-none"></textarea>
+                    <input type="url" id="fm-link" placeholder="Lien du site web officiel (https://...)" class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
+                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Ajouter la formation</button>
+                </form>
+                <div class="space-y-2">
+                    ${list.map((f, idx) => `
+                        <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center flex-wrap gap-2">
+                            <div>
+                                <span class="font-bold text-white">${f.title}</span> <span class="text-amber-400">(${f.establishment} - ${f.city})</span>
+                                <div class="text-[10px] text-amber-200/60">Rythme : ${f.type}</div>
+                            </div>
+                            <button onclick="adminDeleteFormation(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold"><i class="fa-solid fa-trash"></i> Supprimer</button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        }
+
+        async function adminAddFormation(e) {
+            e.preventDefault();
+            let list = DB.get('formations') || [];
+            list.push({
+                title: document.getElementById('fm-title').value,
+                establishment: document.getElementById('fm-est').value,
+                city: document.getElementById('fm-city').value,
+                type: document.getElementById('fm-type').value,
+                desc: document.getElementById('fm-desc').value,
+                link: document.getElementById('fm-link').value
+            });
+            await DB.set('formations', list);
+            showToast("Succès", "Formation ajoutée !");
+            render();
+        }
+
+        async function adminDeleteFormation(idx) {
+            if (!confirm("Supprimer cette formation ?")) return;
+            let list = DB.get('formations') || [];
+            list.splice(idx, 1);
+            await DB.set('formations', list);
+            render();
+        }
+
+        // --- GESTION DES APPRÉCIATIONS (ADMIN) ---
+        function renderAdminAppreciations() {
+            let users = DB.get('users') || [], allApps = DB.get('appreciations') || {};
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
+                <h3 class="font-bold text-amber-300 text-sm">Gestion des Appréciations Trimestrielles</h3>
+                <div class="space-y-3">
+                    ${users.map(u => {
+                        let app = allApps[u.username] || { t1: '', t2: '', t3: '', published: false };
+                        return `
+                            <div class="p-4 bg-stone-900 border rounded-2xl space-y-2">
+                                <div class="flex justify-between items-center">
+                                    <span class="font-bold text-amber-300">${u.pseudo || u.username} (${u.realName || u.username})</span>
+                                    <label class="flex items-center gap-2 cursor-pointer">
+                                        <input type="checkbox" ${app.published ? 'checked' : ''} onchange="toggleAppPub('${u.username}', this.checked)" class="w-4 h-4 accent-amber-600">
+                                        <span class="text-xs font-bold">Publier pour l'élève</span>
+                                    </label>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                    <input type="text" id="app_t1_${u.username}" value="${app.t1}" placeholder="Trimestre 1..." oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs">
+                                    <input type="text" id="app_t2_${u.username}" value="${app.t2}" placeholder="Trimestre 2..." oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs">
+                                    <input type="text" id="app_t3_${u.username}" value="${app.t3}" placeholder="Trimestre 3..." oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs">
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            </div>`;
+        }
+
+        async function saveAppInput(username) {
+            let allApps = DB.get('appreciations') || {};
+            if (!allApps[username]) allApps[username] = { t1: '', t2: '', t3: '', published: false };
+            allApps[username].t1 = document.getElementById(`app_t1_${username}`).value;
+            allApps[username].t2 = document.getElementById(`app_t2_${username}`).value;
+            allApps[username].t3 = document.getElementById(`app_t3_${username}`).value;
+            await DB.set('appreciations', allApps);
+        }
+
+        async function toggleAppPub(username, published) {
+            let allApps = DB.get('appreciations') || {};
+            if (!allApps[username]) allApps[username] = { t1: '', t2: '', t3: '', published: false };
+            allApps[username].published = published;
+            await DB.set('appreciations', allApps);
+            showToast("Mis à jour", "Statut des appréciations modifié.");
+        }
+
+        // --- GESTION DES THÈMES, MÉDIAS ET ANIMATIONS ---
+        function applyTheme() {
+            let t = DB.get('site_theme') || {};
+            if (t.btnColor) document.documentElement.style.setProperty('--custom-btn-bg', t.btnColor);
+            if (t.cardBg) document.documentElement.style.setProperty('--custom-card-bg', t.cardBg);
+            if (t.borderColor) document.documentElement.style.setProperty('--custom-border-color', t.borderColor);
+            
+            let body = document.getElementById('body-theme');
+            if (t.mode === 'light') {
+                body.className = "bg-stone-100 text-stone-900 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden";
+            } else {
+                body.className = "bg-stone-950 text-amber-50 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden";
+            }
+
+            let bgC = document.getElementById('custom-bg-container');
+            if (bgC) {
+                if (t.bgMedia) {
+                    if (t.bgMedia.match(/\.(mp4|webm|ogg)$/i) || t.bgMedia.startsWith('data:video')) {
+                        bgC.innerHTML = `<video autoplay muted loop class="w-full h-full object-cover opacity-40"><source src="${t.bgMedia}"></video>`;
+                    } else {
+                        bgC.innerHTML = `<div class="w-full h-full bg-cover bg-center opacity-40" style="background-image: url('${t.bgMedia}')"></div>`;
+                    }
+                } else {
+                    bgC.innerHTML = '';
+                }
+            }
+
+            let audioEl = document.getElementById('theme-audio');
+            if (audioEl) {
+                if (t.bgAudio) {
+                    if (audioEl.src !== t.bgAudio) {
+                        audioEl.src = t.bgAudio;
+                        audioEl.play().catch(e => console.log("Audio autoplay bloqué par le navigateur"));
+                    }
+                } else {
+                    audioEl.pause();
+                    audioEl.src = '';
+                }
+            }
+
+            let decoContainer = document.getElementById('theme-decorations');
+            if (!decoContainer) return;
+            decoContainer.innerHTML = '';
+            
+            let symbol = '';
+            if (t.preset === 'noel') symbol = '🎁';
+            else if (t.preset === 'halloween') symbol = '🎃';
+            else if (t.preset === 'paques') symbol = '🥚';
+            else if (t.preset === 'automne') symbol = '🍂';
+            else if (t.preset === 'hiver') symbol = '❄️';
+            else if (t.preset === 'printemps') symbol = '🌸';
+            else if (t.preset === 'ete') symbol = '☀️';
+
+            if (symbol) {
+                let count = t.preset === 'ete' ? 30 : 18;
+                for (let i = 0; i < count; i++) {
+                    let item = document.createElement('div');
+                    item.className = 'deco-item text-xl';
+                    item.textContent = symbol;
+                    item.style.left = Math.random() * 100 + 'vw';
+                    item.style.animationDuration = (Math.random() * 4 + 4) + 's';
+                    item.style.animationDelay = (Math.random() * 5) + 's';
+                    decoContainer.appendChild(item);
+                }
+            }
+        }
+
+        function renderAdminThemeFull() {
+            let t = DB.get('site_theme') || {};
+            let countdown = DB.get('countdown') || { title: '', date: '' };
+            let currentQr = DB.get('home_qr_image') || '';
+
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
+                <h3 class="font-bold text-amber-300">Personnalisation du Compte à rebours</h3>
+                <form onsubmit="saveCountdownAdmin(event)" class="space-y-2">
+                    <input type="text" id="cd-title" value="${countdown.title}" required placeholder="Titre..." class="w-full p-2 bg-stone-900 border rounded-xl text-white">
+                    <input type="datetime-local" id="cd-date" value="${countdown.date}" required class="w-full p-2 bg-stone-900 border rounded-xl text-white">
+                    <button type="submit" class="dyn-btn w-full py-2 text-white font-bold rounded-xl">Mettre à jour le compteur</button>
+                </form>
+
+                <div class="border-t border-amber-900/40 pt-4 space-y-3">
+                    <h3 class="font-bold text-amber-300">Gestion du QR Code (Accueil)</h3>
+                    ${currentQr ? `<img src="${currentQr}" width="80" class="rounded-lg"/>` : ''}
+                    <div class="flex gap-2 items-center">
+                        <input type="file" id="admin-home-qr-file" accept="image/*" class="p-2 bg-stone-900 border rounded-xl text-xs flex-1 text-white">
+                        <button onclick="saveAdminHomeQr()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Mettre à jour</button>
+                    </div>
+                </div>
+
+                <div class="border-t border-amber-900/40 pt-4 space-y-3">
+                    <h3 class="font-bold text-amber-300">Thème & Saisons / Fêtes</h3>
+                    <select id="theme-preset" onchange="saveThemePreset(this.value)" class="w-full p-2 bg-stone-900 border rounded-xl text-white">
+                        <option value="standard" ${t.preset==='standard'?'selected':''}>Standard (Doré)</option>
+                        <option value="noel" ${t.preset==='noel'?'selected':''}>🎄 Noël (Cadeaux qui tombent)</option>
+                        <option value="halloween" ${t.preset==='halloween'?'selected':''}>🎃 Halloween (Citrouilles)</option>
+                        <option value="paques" ${t.preset==='paques'?'selected':''}>🥚 Pâques (Œufs)</option>
+                        <option value="automne" ${t.preset==='automne'?'selected':''}>🍂 Automne (Feuilles)</option>
+                        <option value="hiver" ${t.preset==='hiver'?'selected':''}>❄️ Hiver (Flocons)</option>
+                        <option value="printemps" ${t.preset==='printemps'?'selected':''}>🌸 Printemps (Fleurs)</option>
+                        <option value="ete" ${t.preset==='ete'?'selected':''}>☀️ Été (Soleils)</option>
+                    </select>
+                </div>
+
+                <div class="border-t border-amber-900/40 pt-4 space-y-3">
+                    <h3 class="font-bold text-amber-300">Upload de médias personnalisés (Fond & Audio)</h3>
+                    <div class="space-y-2">
+                        <label class="block text-xs font-bold">Image ou Vidéo de fond :</label>
+                        <input type="file" id="admin-bg-media" accept="image/*,video/*" class="w-full p-2 bg-stone-900 border rounded-xl text-xs text-white">
+                        <button onclick="uploadBgMedia()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Appliquer le média de fond</button>
+                    </div>
+                    <div class="space-y-2 pt-2">
+                        <label class="block text-xs font-bold">Fichier Audio de fond (Musique en boucle) :</label>
+                        <input type="file" id="admin-bg-audio" accept="audio/*" class="w-full p-2 bg-stone-900 border rounded-xl text-xs text-white">
+                        <button onclick="uploadBgAudio()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Appliquer l'audio de fond</button>
+                        ${t.bgAudio ? `<button onclick="removeBgAudio()" class="px-3 py-1 bg-red-600/30 text-red-300 rounded-lg text-xs font-bold ml-2">Couper l'audio</button>` : ''}
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        async function saveCountdownAdmin(e) {
+            e.preventDefault();
+            let title = document.getElementById('cd-title').value;
+            let date = document.getElementById('cd-date').value;
+            await DB.set('countdown', { title, date });
+            showToast("Succès", "Compte à rebours mis à jour !");
+            render();
+        }
+
+        async function saveThemePreset(preset) {
+            let t = DB.get('site_theme') || {};
+            t.preset = preset;
+            await DB.set('site_theme', t);
+            showToast("Thème mis à jour !", "");
+            render();
+        }
+
+        async function uploadBgMedia() {
+            let fileInput = document.getElementById('admin-bg-media');
+            if (fileInput.files && fileInput.files[0]) {
+                let reader = new FileReader();
+                reader.onload = async (ev) => {
+                    let t = DB.get('site_theme') || {};
+                    t.bgMedia = ev.target.result;
+                    await DB.set('site_theme', t);
+                    showToast("Succès", "Fond d'écran mis à jour !");
+                    render();
+                };
+                reader.readAsDataURL(fileInput.files[0]);
+            }
+        }
+
+        async function uploadBgAudio() {
+            let fileInput = document.getElementById('admin-bg-audio');
+            if (fileInput.files && fileInput.files[0]) {
+                let reader = new FileReader();
+                reader.onload = async (ev) => {
+                    let t = DB.get('site_theme') || {};
+                    t.bgAudio = ev.target.result;
+                    await DB.set('site_theme', t);
+                    showToast("Succès", "Audio de fond activé !");
+                    render();
+                };
+                reader.readAsDataURL(fileInput.files[0]);
+            }
+        }
+
+        async function removeBgAudio() {
+            let t = DB.get('site_theme') || {};
+            t.bgAudio = '';
+            await DB.set('site_theme', t);
+            showToast("Audio coupé", "");
+            render();
+        }
+
+        async function saveAdminHomeQr() {
+            let fileInput = document.getElementById('admin-home-qr-file');
+            if (fileInput.files && fileInput.files[0]) {
+                let reader = new FileReader();
+                reader.onload = async (ev) => {
+                    await DB.set('home_qr_image', ev.target.result);
+                    showToast("Succès", "QR code mis à jour !");
+                    render();
+                };
+                reader.readAsDataURL(fileInput.files[0]);
+            }
+        }
+    </script>
 </body>
 </html>
