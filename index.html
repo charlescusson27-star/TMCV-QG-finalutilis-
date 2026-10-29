@@ -49,7 +49,7 @@
         </div>
     </div>
 
-    <!-- Modal Visionneuse -->
+    <!-- Modal Visionneuse de Documents -->
     <div id="file-viewer-modal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4">
         <div class="w-full max-w-5xl h-[85vh] dyn-card border rounded-3xl p-6 shadow-2xl flex flex-col space-y-4">
             <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
@@ -874,7 +874,10 @@
                     ${items.length === 0 ? '<p class="text-amber-200/50">Aucune fiche disponible.</p>' : ''}
                     ${items.map(d=>`
                         <div class="dyn-card border p-4 rounded-2xl flex justify-between items-center">
-                            <span>${d.title}</span>
+                            <div>
+                                <span class="font-bold text-white">${d.title}</span>
+                                ${d.category ? `<span class="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg">${d.category}</span>` : ''}
+                            </div>
                             <div class="flex gap-2">
                                 ${d.fileType === 'url' ? `<a href="${d.fileData}" target="_blank" class="px-3 py-1.5 bg-stone-900 border text-amber-200 rounded-xl font-bold">Ouvrir le lien</a>` : `
                                     <button onclick="openFileViewer('${d.title}', '${d.fileData}', '${d.fileType}')" class="px-3 py-1.5 bg-sky-600 text-white rounded-xl font-bold">Aperçu</button>
@@ -888,20 +891,9 @@
         }
 
         function renderExamsTab() {
-            let exams = DB.get('exam_subjects') || [];
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">Sujets & Exercices Types Bac + Corrigés</h2></div>
-                <div class="space-y-3">
-                    ${exams.length === 0 ? '<p class="text-amber-200/50">Aucun sujet disponible.</p>' : ''}
-                    ${exams.map(e => `
-                        <div class="dyn-card border p-5 rounded-2xl space-y-3">
-                            <div class="flex justify-between items-start">
-                                <div><h3 class="font-bold text-amber-300 text-sm">${e.title}</h3><span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-bold">${e.category || 'Sujet Type Bac'}</span></div>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
+            let exams = DB.get('revision_sheets') || [];
+            let filtered = exams.filter(e => e.category && e.category.includes('Bac'));
+            return renderDocPage('Sujets & Corrigés Types Bac', filtered);
         }
 
         function renderDocumentsTab(user) {
@@ -1026,30 +1018,37 @@
             await pushNotification("Nouveau Message", `${user.pseudo || user.username} : ${text.substring(0, 30)}...`);
         }
 
-        // --- ESPACE ADMIN COMPLET (AVEC FORMATIONS & APPRÉCIATIONS) ---
+        // --- ESPACE ADMIN COMPLET (AVEC EXPORTS, CATÉGORIES & SONDAGES) ---
         function renderAdmin() {
             return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-4 rounded-3xl flex gap-2 flex-wrap">
-                    <button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes & Rôles</button>
+                    <button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes & Exports</button>
                     <button onclick="state.adminSub='quizzes';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='quizzes'?'dyn-btn text-white':'bg-stone-900'}">Quiz Multi-questions</button>
-                    <button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches & Docs</button>
+                    <button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches & Corrigés</button>
+                    <button onclick="state.adminSub='polls';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='polls'?'dyn-btn text-white':'bg-stone-900'}">Sondages Éclairs</button>
                     <button onclick="state.adminSub='formations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='formations'?'dyn-btn text-white':'bg-stone-900'}">Formations Post-Bac</button>
                     <button onclick="state.adminSub='appreciations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='appreciations'?'dyn-btn text-white':'bg-stone-900'}">Appréciations</button>
                     <button onclick="state.adminSub='theme';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='theme'?'dyn-btn text-white':'bg-stone-900'}">Thèmes, Média & QR</button>
                 </div>
-                ${state.adminSub==='users'?renderAdminUsers():''}
+                ${state.adminSub==='users'?renderAdminUsersWithExport():''}
                 ${state.adminSub==='quizzes'?renderAdminQuizzes():''}
-                ${state.adminSub==='docs'?renderAdminDocs():''}
+                ${state.adminSub==='docs'?renderAdminDocsCategorized():''}
+                ${state.adminSub==='polls'?renderAdminPolls():''}
                 ${state.adminSub==='formations'?renderAdminFormations():''}
                 ${state.adminSub==='appreciations'?renderAdminAppreciations():''}
                 ${state.adminSub==='theme'?renderAdminThemeFull():''}
             </div>`;
         }
 
-        function renderAdminUsers() {
+        function renderAdminUsersWithExport() {
             let users = DB.get('users') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300 text-sm">Gestion des Comptes & Réinitialisation des Mots de passe</h3>
+            let subs = DB.get('quiz_submissions') || {};
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
+                <div class="flex justify-between items-center flex-wrap gap-2 border-b pb-3">
+                    <h3 class="font-bold text-amber-300 text-sm">Gestion des Comptes, Mots de passe & Exports</h3>
+                    <button onclick="exportAllUsersJSON()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold text-xs"><i class="fa-solid fa-download mr-1"></i> Exporter TOUS les comptes</button>
+                </div>
+
                 <form onsubmit="adminCreateUser(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-2">
                     <h4 class="font-bold text-amber-400">Créer un nouvel utilisateur</h4>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
@@ -1063,24 +1062,31 @@
                     </div>
                     <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Créer le compte</button>
                 </form>
+
                 <div class="space-y-2">
-                    ${users.map((u, idx) => `
-                        <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center flex-wrap gap-2">
-                            <div>
-                                <span class="font-bold text-white">${u.username}</span> (${u.realName || 'Sans nom'}) - <span class="text-amber-400 font-bold">${u.role}</span>
+                    ${users.map((u, idx) => {
+                        let userSubs = subs[u.username] || [];
+                        return `
+                            <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center flex-wrap gap-2">
+                                <div>
+                                    <span class="font-bold text-white">${u.username}</span> (${u.realName || 'Sans nom'}) - <span class="text-amber-400 font-bold">${u.role}</span>
+                                    <div class="text-[10px] text-amber-200/60">${userSubs.length} quiz réalisé(s)</div>
+                                </div>
+                                <div class="flex gap-1 items-center flex-wrap">
+                                    <input type="text" id="reset_pass_${idx}" placeholder="Nouveau mdp" class="p-1 bg-stone-950 border rounded text-xs w-20 text-white">
+                                    <button onclick="adminResetPass(${idx})" class="px-2 py-1 bg-sky-600 text-white rounded font-bold text-[10px]">Réinit.</button>
+                                    <select onchange="adminChangeRole(${idx}, this.value)" class="p-1 bg-stone-950 border rounded text-[10px] text-amber-100">
+                                        <option value="student" ${u.role==='student'?'selected':''}>Élève</option>
+                                        <option value="delegate" ${u.role==='delegate'?'selected':''}>Délégué</option>
+                                        <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
+                                    </select>
+                                    <button onclick="exportSingleUserJSON('${u.username}')" class="px-2 py-1 bg-stone-950 border text-amber-200 rounded font-bold text-[10px]" title="Exporter compte"><i class="fa-solid fa-file-export"></i></button>
+                                    <button onclick="exportSingleUserQuizJSON('${u.username}')" class="px-2 py-1 bg-stone-950 border text-amber-300 rounded font-bold text-[10px]" title="Exporter quiz"><i class="fa-solid fa-chart-line"></i></button>
+                                    <button onclick="adminDeleteUser(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold text-[10px]"><i class="fa-solid fa-trash"></i></button>
+                                </div>
                             </div>
-                            <div class="flex gap-2 items-center">
-                                <input type="text" id="reset_pass_${idx}" placeholder="Nouveau mdp" class="p-1.5 bg-stone-950 border rounded text-xs w-24 text-white">
-                                <button onclick="adminResetPass(${idx})" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Réinit. MDP</button>
-                                <select onchange="adminChangeRole(${idx}, this.value)" class="p-1 bg-stone-950 border rounded text-xs text-amber-100">
-                                    <option value="student" ${u.role==='student'?'selected':''}>Élève</option>
-                                    <option value="delegate" ${u.role==='delegate'?'selected':''}>Délégué</option>
-                                    <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
-                                </select>
-                                <button onclick="adminDeleteUser(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold"><i class="fa-solid fa-trash"></i></button>
-                            </div>
-                        </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             </div>`;
         }
@@ -1124,6 +1130,36 @@
             users.splice(idx, 1);
             await DB.set('users', users);
             render();
+        }
+
+        function downloadJSON(filename, data) {
+            let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function exportAllUsersJSON() {
+            let users = DB.get('users') || [];
+            downloadJSON(`LEQG_Tous_les_Comptes_${new Date().toISOString().slice(0,10)}.json`, users);
+            showToast("Export Réussi", "Fichier JSON des comptes téléchargé.");
+        }
+
+        function exportSingleUserJSON(username) {
+            let user = (DB.get('users') || []).find(u => u.username === username);
+            if (user) {
+                downloadJSON(`LEQG_Compte_${username}.json`, user);
+                showToast("Export Réussi", `Compte ${username} téléchargé.`);
+            }
+        }
+
+        function exportSingleUserQuizJSON(username) {
+            let subs = (DB.get('quiz_submissions') || {})[username] || [];
+            downloadJSON(`LEQG_Quiz_${username}.json`, { username, submissions: subs });
+            showToast("Export Réussi", `Quiz de ${username} téléchargés.`);
         }
 
         function renderAdminQuizzes() {
@@ -1197,33 +1233,106 @@
             render();
         }
 
-        function renderAdminDocs() {
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300">Publication de Fichiers & Fiches de Révision</h3>
-                <form onsubmit="uploadDoc(event)" class="space-y-2">
-                    <input type="text" id="rev-title" required placeholder="Titre..." class="w-full p-2 bg-stone-900 border rounded-xl text-white">
-                    <input type="file" id="rev-file" accept=".pdf,image/*" class="w-full p-2 bg-stone-900 border rounded-xl text-xs text-white">
-                    <button type="submit" class="dyn-btn w-full py-2 text-white font-bold rounded-xl">Publier et notifier</button>
+        function renderAdminDocsCategorized() {
+            let sheets = DB.get('revision_sheets') || [];
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
+                <h3 class="font-bold text-amber-300 text-sm">Publication & Catégorisation des Documents</h3>
+                <form onsubmit="adminUploadCategorizedDoc(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
+                    <h4 class="font-bold text-amber-400">Publier un document / corrigé</h4>
+                    <input type="text" id="cat-doc-title" required placeholder="Titre du document..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <select id="cat-doc-type" required class="p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                            <option value="Fiche de Révision">📖 Fiche de Révision</option>
+                            <option value="Sujet Type Bac">📄 Sujet Type Bac</option>
+                            <option value="Fiche d'Exercices">✏️ Fiche d'Exercices</option>
+                            <option value="Corrigé d'Exercices">✅ Corrigé d'Exercices</option>
+                            <option value="Corrigé Type Bac">🎯 Corrigé Type Bac</option>
+                        </select>
+                        <input type="file" id="cat-doc-file" accept=".pdf,image/*" required class="p-2 bg-stone-950 border rounded-xl text-xs text-white">
+                    </div>
+                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier et Notifier</button>
                 </form>
+                <div class="space-y-2">
+                    <h4 class="font-bold text-amber-300">Documents actuels (${sheets.length})</h4>
+                    ${sheets.map((d, idx) => `
+                        <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center gap-2">
+                            <div>
+                                <span class="font-bold text-white">${d.title}</span>
+                                <span class="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg">${d.category || 'Fiche de Révision'}</span>
+                            </div>
+                            <button onclick="adminDeleteDoc(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    `).join('')}
+                </div>
             </div>`;
         }
 
-        async function uploadDoc(e) {
+        async function adminUploadCategorizedDoc(e) {
             e.preventDefault();
-            let title = document.getElementById('rev-title').value;
-            let file = document.getElementById('rev-file').files[0];
+            let title = document.getElementById('cat-doc-title').value;
+            let category = document.getElementById('cat-doc-type').value;
+            let file = document.getElementById('cat-doc-file').files[0];
             if (file) {
                 let reader = new FileReader();
                 reader.onload = async (ev) => {
-                    let list = DB.get('revision_sheets') || [];
-                    list.push({ title, fileData: ev.target.result, fileType: file.type });
-                    await DB.set('revision_sheets', list);
-                    showToast("Succès", "Fiche publiée !");
-                    await pushNotification("Nouveau Document Disponible !", `La fiche "${title}" a été publiée.`);
+                    let sheets = DB.get('revision_sheets') || [];
+                    sheets.push({ title, category, fileData: ev.target.result, fileType: file.type, date: new Date().toLocaleDateString() });
+                    await DB.set('revision_sheets', sheets);
+                    showToast("Document publié !", `Catégorie : ${category}`);
+                    await pushNotification("Nouveau Document !", `[${category}] ${title} est disponible.`);
                     render();
                 };
                 reader.readAsDataURL(file);
             }
+        }
+
+        async function adminDeleteDoc(idx) {
+            if (!confirm("Supprimer ce document ?")) return;
+            let sheets = DB.get('revision_sheets') || [];
+            sheets.splice(idx, 1);
+            await DB.set('revision_sheets', sheets);
+            render();
+        }
+
+        function renderAdminPolls() {
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
+                <h3 class="font-bold text-amber-300 text-sm">Créer un Sondage Éclair</h3>
+                <form onsubmit="adminCreatePoll(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
+                    <input type="text" id="poll-q" required placeholder="Question du sondage..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
+                    <div id="poll-options-container" class="space-y-2">
+                        <input type="text" placeholder="Option 1" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required>
+                        <input type="text" placeholder="Option 2" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required>
+                    </div>
+                    <button type="button" onclick="addPollOptionField()" class="px-3 py-1.5 bg-stone-800 text-amber-300 rounded-xl font-bold text-xs">+ Ajouter une option</button>
+                    <div class="pt-2">
+                        <label class="block text-xs font-bold text-amber-200 mb-1">Date et heure d'expiration :</label>
+                        <input type="datetime-local" id="poll-expire" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
+                    </div>
+                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl mt-2">Lancer le Sondage & Notifier</button>
+                </form>
+            </div>`;
+        }
+
+        function addPollOptionField() {
+            let container = document.getElementById('poll-options-container');
+            let inp = document.createElement('input');
+            inp.type = 'text';
+            inp.placeholder = `Option ${container.children.length + 1}`;
+            inp.className = 'poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white';
+            container.appendChild(inp);
+        }
+
+        async function adminCreatePoll(e) {
+            e.preventDefault();
+            let question = document.getElementById('poll-q').value;
+            let options = Array.from(document.querySelectorAll('.poll-opt')).map(i => i.value.trim()).filter(Boolean);
+            let expiresAt = document.getElementById('poll-expire').value;
+            let polls = DB.get('polls') || [];
+            polls.unshift({ id: Date.now(), question, options, results: {}, voters: [], expiresAt });
+            await DB.set('polls', polls);
+            showToast("Sondage lancé !", "Accessible à la classe.");
+            await pushNotification("Nouveau Sondage !", `Répondez au sondage : "${question}"`);
+            render();
         }
 
         function renderAdminFormations() {
@@ -1479,225 +1588,6 @@
 
         function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
         window.onload = init;
-    </script>
-    <script>
-        // --- 1. PUBLICATION ET CATÉGORISATION DES FICHES, SUJETS ET CORRIGÉS ---
-        function renderAdminDocsWithCategories() {
-            let sheets = DB.get('revision_sheets') || [];
-            let exams = DB.get('exam_subjects') || [];
-
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <h3 class="font-bold text-amber-300 text-sm">Publication & Catégorisation des Documents</h3>
-                
-                <!-- Formulaire de publication -->
-                <form onsubmit="adminUploadCategorizedDoc(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
-                    <h4 class="font-bold text-amber-400">Publier un nouveau document / corrigé</h4>
-                    <input type="text" id="cat-doc-title" required placeholder="Titre du document..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <select id="cat-doc-type" required class="p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
-                            <option value="Fiche de Révision">📖 Fiche de Révision</option>
-                            <option value="Sujet Type Bac">📄 Sujet Type Bac</option>
-                            <option value="Fiche d'Exercices">✏️ Fiche d'Exercices</option>
-                            <option value="Corrigé d'Exercices">✅ Corrigé d'Exercices</option>
-                            <option value="Corrigé Type Bac">🎯 Corrigé Type Bac</option>
-                        </select>
-                        <input type="file" id="cat-doc-file" accept=".pdf,image/*" required class="p-2 bg-stone-950 border rounded-xl text-xs text-white">
-                    </div>
-
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier et Notifier la Classe</button>
-                </form>
-
-                <!-- Liste des documents publiés -->
-                <div class="space-y-2">
-                    <h4 class="font-bold text-amber-300">Documents actuels (${sheets.length + exams.length})</h4>
-                    ${sheets.map((d, idx) => `
-                        <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center gap-2">
-                            <div>
-                                <span class="font-bold text-white">${d.title}</span>
-                                <span class="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg">${d.category || 'Fiche de Révision'}</span>
-                            </div>
-                            <button onclick="adminDeleteDoc(${idx}, 'sheet')" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
-        }
-
-        async function adminUploadCategorizedDoc(e) {
-            e.preventDefault();
-            let title = document.getElementById('cat-doc-title').value;
-            let category = document.getElementById('cat-doc-type').value;
-            let file = document.getElementById('cat-doc-file').files[0];
-
-            if (file) {
-                let reader = new FileReader();
-                reader.onload = async (ev) => {
-                    let sheets = DB.get('revision_sheets') || [];
-                    sheets.push({
-                        title,
-                        category,
-                        fileData: ev.target.result,
-                        fileType: file.type,
-                        date: new Date().toLocaleDateString()
-                    });
-                    await DB.set('revision_sheets', sheets);
-                    showToast("Document publié !", `Catégorie : ${category}`);
-                    await pushNotification("Nouveau Document !", `[${category}] ${title} est disponible.`);
-                    render();
-                };
-                reader.readAsDataURL(file);
-            }
-        }
-
-        async function adminDeleteDoc(idx, type) {
-            if (!confirm("Supprimer ce document ?")) return;
-            let sheets = DB.get('revision_sheets') || [];
-            sheets.splice(idx, 1);
-            await DB.set('revision_sheets', sheets);
-            render();
-        }
-
-
-        // --- 2. CRÉATION DE SONDAGES ÉCLAIRS ---
-        function renderAdminPolls() {
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300 text-sm">Créer un Sondage Éclair</h3>
-                <form onsubmit="adminCreatePoll(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
-                    <input type="text" id="poll-q" required placeholder="Question du sondage..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    
-                    <div id="poll-options-container" class="space-y-2">
-                        <input type="text" placeholder="Option 1" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required>
-                        <input type="text" placeholder="Option 2" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required>
-                    </div>
-                    
-                    <button type="button" onclick="addPollOptionField()" class="px-3 py-1.5 bg-stone-800 text-amber-300 rounded-xl font-bold text-xs">+ Ajouter une option</button>
-                    
-                    <div class="pt-2">
-                        <label class="block text-xs font-bold text-amber-200 mb-1">Date et heure d'expiration :</label>
-                        <input type="datetime-local" id="poll-expire" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    </div>
-
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl mt-2">Lancer le Sondage & Notifier</button>
-                </form>
-            </div>`;
-        }
-
-        function addPollOptionField() {
-            let container = document.getElementById('poll-options-container');
-            let inp = document.createElement('input');
-            inp.type = 'text';
-            inp.placeholder = `Option ${container.children.length + 1}`;
-            inp.className = 'poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white';
-            container.appendChild(inp);
-        }
-
-        async function adminCreatePoll(e) {
-            e.preventDefault();
-            let question = document.getElementById('poll-q').value;
-            let options = Array.from(document.querySelectorAll('.poll-opt')).map(i => i.value.trim()).filter(Boolean);
-            let expiresAt = document.getElementById('poll-expire').value;
-
-            let polls = DB.get('polls') || [];
-            polls.unshift({
-                id: Date.now(),
-                question,
-                options,
-                results: {},
-                voters: [],
-                expiresAt
-            });
-            await DB.set('polls', polls);
-            showToast("Sondage lancé !", "Accessible à la classe.");
-            await pushNotification("Nouveau Sondage !", `Répondez au sondage : "${question}"`);
-            render();
-        }
-
-
-        // --- 3. EXPORT DES COMPTES (INDIVIDUEL & GLOBAL) ---
-        function renderAdminExportUsers() {
-            let users = DB.get('users') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <div class="flex justify-between items-center flex-wrap gap-2">
-                    <h3 class="font-bold text-amber-300 text-sm">Exportation des Données Comptes</h3>
-                    <button onclick="exportAllUsersJSON()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold"><i class="fa-solid fa-download mr-1"></i> Exporter TOUS les comptes</button>
-                </div>
-                <div class="space-y-2">
-                    ${users.map(u => `
-                        <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center gap-2">
-                            <div>
-                                <span class="font-bold text-white">${u.username}</span> (${u.realName || 'Sans nom'}) - <span class="text-amber-400 font-bold">${u.role}</span>
-                            </div>
-                            <button onclick="exportSingleUserJSON('${u.username}')" class="px-3 py-1 bg-stone-950 border text-amber-200 rounded-lg font-bold text-xs"><i class="fa-solid fa-file-export mr-1"></i> Exporter ce compte</button>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
-        }
-
-        function downloadJSON(filename, data) {
-            let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            let url = URL.createObjectURL(blob);
-            let a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-        }
-
-        function exportAllUsersJSON() {
-            let users = DB.get('users') || [];
-            downloadJSON(`LEQG_Tous_les_Comptes_${new Date().toISOString().slice(0,10)}.json`, users);
-            showToast("Export Réussi", "Fichier JSON des comptes téléchargé.");
-        }
-
-        function exportSingleUserJSON(username) {
-            let user = (DB.get('users') || []).find(u => u.username === username);
-            if (user) {
-                downloadJSON(`LEQG_Compte_${username}.json`, user);
-                showToast("Export Réussi", `Compte ${username} téléchargé.`);
-            }
-        }
-
-
-        // --- 4. EXPORT DE LA PROGRESSION DES QUIZ (PAR ÉLÈVE & GLOBAL) ---
-        function renderAdminExportQuizProgression() {
-            let users = DB.get('users') || [];
-            let subs = DB.get('quiz_submissions') || {};
-
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <div class="flex justify-between items-center flex-wrap gap-2">
-                    <h3 class="font-bold text-amber-300 text-sm">Export de la Progression des Quiz</h3>
-                    <button onclick="exportAllQuizProgressionJSON()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold"><i class="fa-solid fa-chart-line mr-1"></i> Exporter TOUTES les progressions</button>
-                </div>
-                <div class="space-y-2">
-                    ${users.map(u => {
-                        let userSubs = subs[u.username] || [];
-                        return `
-                            <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center gap-2">
-                                <div>
-                                    <span class="font-bold text-white">${u.pseudo || u.username}</span> (${u.realName || u.username})
-                                    <span class="text-xs text-amber-200/60 block">${userSubs.length} quiz réalisé(s)</span>
-                                </div>
-                                <button onclick="exportSingleUserQuizJSON('${u.username}')" class="px-3 py-1 bg-stone-950 border text-amber-200 rounded-lg font-bold text-xs"><i class="fa-solid fa-file-export mr-1"></i> Exporter sa progression</button>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>`;
-        }
-
-        function exportAllQuizProgressionJSON() {
-            let subs = DB.get('quiz_submissions') || {};
-            downloadJSON(`LEQG_Progression_Globale_Quiz_${new Date().toISOString().slice(0,10)}.json`, subs);
-            showToast("Export Réussi", "Progression globale des quiz téléchargée.");
-        }
-
-        function exportSingleUserQuizJSON(username) {
-            let subs = (DB.get('quiz_submissions') || {})[username] || [];
-            downloadJSON(`LEQG_Progression_Quiz_${username}.json`, { username, submissions: subs });
-            showToast("Export Réussi", `Progression de ${username} téléchargée.`);
-        }
     </script>
 </body>
 </html>
