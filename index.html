@@ -1807,4 +1807,83 @@
         window.onload = init;
     </script>
 </body>
+   <script>
+    // ==========================================
+    // GESTION ADMIN : SUPPRESSION PAGES BLANCHES & QR CODE ACCUEIL
+    // ==========================================
+
+    const originalRenderAdminPages = window.renderAdminPages || window.renderAdminCustomPages;
+    if (typeof originalRenderAdminPages === 'function') {
+        window.renderAdminPages = function() {
+            let baseHtml = originalRenderAdminPages();
+            let customPages = DB.get('custom_pages') || [];
+            let currentQr = DB.get('home_qr_image') || '';
+
+            let managementHtml = `
+                <!-- 1. GESTION DES PAGES "CARTE BLANCHE" -->
+                <div class="dyn-card border p-6 rounded-3xl space-y-4 mt-4 text-xs">
+                    <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-file-pen mr-2"></i>Gestion de mes Pages "Carte Blanche"</h3>
+                    <p class="text-[11px] text-amber-200/70">Retrouvez ci-dessous la liste de toutes les pages créées par vos soins et supprimez-les si besoin.</p>
+                    <div class="space-y-2">
+                        ${customPages.length === 0 ? '<p class="text-amber-200/50 text-xs">Aucune page personnalisée pour le moment.</p>' : ''}
+                        ${customPages.map((page, index) => `
+                            <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center">
+                                <div>
+                                    <span class="font-bold text-white">${page.title || 'Sans titre'}</span>
+                                    <span class="text-[10px] text-amber-200/60 ml-2">(${page.slug || 'page-' + index})</span>
+                                </div>
+                                <button onclick="deleteCustomPageDirect(${index})" class="px-3 py-1.5 bg-red-600/30 text-red-300 hover:bg-red-600/50 rounded-xl font-bold flex items-center gap-1">
+                                    <i class="fa-solid fa-trash"></i> Supprimer
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+
+                <!-- 2. UPLOAD DU QR CODE DE LA PAGE D'ACCUEIL -->
+                <div class="dyn-card border p-6 rounded-3xl space-y-4 mt-4 text-xs">
+                    <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>Gestion du QR Code (Page d'Accueil & Pages)</h3>
+                    <p class="text-[11px] text-amber-200/70">Uploadez une image pour mettre à jour le QR code affiché sur la page d'accueil de la classe.</p>
+                    
+                    ${currentQr ? `
+                        <div class="p-2 bg-stone-900 inline-block rounded-xl border border-amber-500/30">
+                            <img src="${currentQr}" width="90" height="90" class="rounded-lg mx-auto"/>
+                            <p class="text-[9px] text-center text-amber-200/60 mt-1">QR Code actuel</p>
+                        </div>
+                    ` : '<p class="text-amber-200/50">Aucun QR code enregistré pour l\'instant.</p>'}
+
+                    <div class="flex gap-2 items-center pt-2">
+                        <input type="file" id="admin-home-qr-file" accept="image/*" class="p-2 bg-stone-900 border rounded-xl text-xs flex-1">
+                        <button onclick="saveAdminHomeQr()" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl shadow-lg">Mettre à jour le QR Code</button>
+                    </div>
+                </div>
+            `;
+            return baseHtml + managementHtml;
+        };
+    }
+
+    async function deleteCustomPageDirect(index) {
+        if (!confirm("Voulez-vous vraiment supprimer cette page personnalisée ?")) return;
+        let customPages = DB.get('custom_pages') || [];
+        customPages.splice(index, 1);
+        await DB.set('custom_pages', customPages);
+        showToast("Page supprimée", "La page a bien été effacée de l'application.");
+        if (typeof render === 'function') render();
+    }
+
+    async function saveAdminHomeQr() {
+        let fileInput = document.getElementById('admin-home-qr-file');
+        if (fileInput.files && fileInput.files[0]) {
+            let reader = new FileReader();
+            reader.onload = async (ev) => {
+                await DB.set('home_qr_image', ev.target.result);
+                showToast("Succès", "Le QR code de l'accueil a été mis à jour pour toute la classe !");
+                if (typeof render === 'function') render();
+            };
+            reader.readAsDataURL(fileInput.files[0]);
+        } else {
+            alert("Veuillez sélectionner un fichier image.");
+        }
+    }
+</script> 
 </html>
