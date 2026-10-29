@@ -62,25 +62,6 @@
             <div id="viewer-content-container" class="flex-1 bg-stone-900 rounded-2xl overflow-hidden border flex items-center justify-center"></div>
         </div>
     </div>
-
-    <!-- Modal Procédure Installation Application -->
-    <div id="app-install-modal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-        <div class="w-full max-w-xl dyn-card border rounded-3xl p-6 shadow-2xl space-y-4 relative">
-            <button onclick="toggleModal('app-install-modal', false)" class="absolute top-4 right-4 text-amber-400 hover:text-white text-2xl font-bold">
-                <i class="fa-solid fa-circle-xmark"></i>
-            </button>
-            <div class="flex items-center gap-3 border-b border-amber-900/40 pb-3">
-                <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl"><i class="fa-solid fa-mobile-screen-button"></i></div>
-                <h3 class="font-black text-lg text-amber-400">Procédure d'installation de l'App & Notifications</h3>
-            </div>
-            <div id="app-install-instructions" class="text-xs text-amber-100 leading-relaxed space-y-2 max-h-[60vh] overflow-y-auto p-3 bg-stone-900/60 rounded-2xl border border-amber-900/20">
-                <!-- Chargé dynamiquement -->
-            </div>
-            <button onclick="requestNotificationPermission()" class="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white font-bold rounded-xl text-xs shadow">Activer les Notifications Push</button>
-            <button onclick="toggleModal('app-install-modal', false)" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl text-xs">J'ai compris (Fermer)</button>
-        </div>
-    </div>
-
     <!-- Modal Créateur de Flashcards -->
     <div id="flashcard-creator-modal" class="hidden fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
         <div class="w-full max-w-2xl h-[85vh] dyn-card border rounded-3xl p-6 shadow-2xl flex flex-col space-y-4">
@@ -2172,68 +2153,4 @@
         window.onload = init;
     </script>
 </body>
-    <script>
-// --- BLOC CODE CORRIGÉ 100% FIREBASE POUR LE TÉLÉCHARGEMENT ---
-
-// 1. Enregistre l'URL du lien Google Drive sur Firebase
-async function saveAdminAppUrl(e) {
-    e.preventDefault();
-    let linkVal = document.getElementById('adm-app-link').value.trim();
-    
-    await DB.set('app_file_url', linkVal);
-    await DB.set('app_file_data', ''); // Nettoie l'ancien fichier uploadé pour privilégier le lien
-    
-    showToast("Lien enregistré !", "Le lien Google Drive a été synchronisé sur Firebase pour toute la classe.");
-}
-
-// 2. Enregistre le fichier uploadé si l'admin préfère cette option
-async function saveAdminAppFile(e) {
-    e.preventDefault();
-    let fileInp = document.getElementById('adm-app-file');
-    
-    if (fileInp.files && fileInp.files[0]) {
-        let file = fileInp.files[0];
-        let reader = new FileReader();
-        
-        reader.onload = async (ev) => {
-            await DB.set('app_file_data', ev.target.result);
-            await DB.set('app_file_name', file.name);
-            await DB.set('app_file_url', ''); // Nettoie l'URL si on utilise un fichier uploadé
-            
-            showToast("Fichier enregistré !", "Le fichier de l'application est sauvegardé sur Firebase.");
-        };
-        reader.readAsDataURL(file);
-    }
-}
-
-// 3. Action lors du clic sur le bouton "App Mobile" en haut du site
-function triggerAppDownload() {
-    let fileUrl = DB.get('app_file_url');
-    let fileData = DB.get('app_file_data');
-    let guide = DB.get('app_install_guide') || 'Consignes d\'installation.';
-
-    document.getElementById('app-install-instructions').innerHTML = guide.replace(/\n/g, '<br>');
-    toggleModal('app-install-modal', true);
-
-    // Si un lien Google Drive a été renseigné, on l'ouvre dans un nouvel onglet pour télécharger là-bas
-    if (fileUrl) {
-        window.open(fileUrl, '_blank');
-        showToast("Redirection", "Ouverture de la page de téléchargement...");
-    } 
-    // Sinon si un fichier a été uploadé directement, on le télécharge
-    else if (fileData) {
-        let fileName = DB.get('app_file_name') || 'LE_QG_App.apk';
-        let a = document.createElement('a');
-        a.href = fileData;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        showToast("Téléchargement", "Le fichier se télécharge...");
-    } 
-    else {
-        showToast("Note", "Aucun fichier ni lien n'a encore été configuré par l'administrateur.");
-    }
-}
-</script>
 </html>
