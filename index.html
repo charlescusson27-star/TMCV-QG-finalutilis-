@@ -172,6 +172,15 @@
                             await db.collection("leqg_data").doc(k).set({ value: cloudData[k] });
                         }
                     } else {
+                        // Supprimer automatiquement les pages spécifiques demandées si elles existent encore en base
+                        let cpDoc = await db.collection("leqg_data").doc("custom_pages").get();
+                        if (cpDoc.exists) {
+                            let pages = cpDoc.data().value || [];
+                            pages = pages.filter(p => !p.title.toLowerCase().includes('qr') && !p.title.toLowerCase().includes('badge'));
+                            cloudData.custom_pages = pages;
+                            await db.collection("leqg_data").doc("custom_pages").set({ value: pages });
+                        }
+
                         const keys = Object.keys(cloudData);
                         for (let k of keys) {
                             let doc = await db.collection("leqg_data").doc(k).get();
@@ -427,7 +436,7 @@
         function renderDashboard(user) {
             let canAccessAdmin = user.role === 'admin' || user.role === 'delegate';
             let hidden = DB.get('hidden_tabs') || [];
-            let customPages = DB.get('custom_pages') || [];
+            let customPages = (DB.get('custom_pages') || []).filter(p => !p.title.toLowerCase().includes('qr') && !p.title.toLowerCase().includes('badge'));
 
             function isVisible(tabId) { return !hidden.includes(tabId); }
 
@@ -454,7 +463,7 @@
                 </header>
                 <div class="flex-1 flex overflow-hidden relative">
                     <aside class="fixed inset-y-0 left-0 z-30 w-64 bg-stone-950/95 border-r transform ${state.sidebar ? 'translate-x-0' : '-translate-x-full'} transition-transform flex flex-col p-4 pt-16 space-y-1 text-xs overflow-y-auto">
-                        ${isVisible('home') ? sbBtn('home', 'Accueil & QR Code', 'house') : ''}
+                        ${isVisible('home') ? sbBtn('home', 'Accueil', 'house') : ''}
                         ${isVisible('profile') ? sbBtn('profile', 'Mon Profil & Avatar', 'user-astronaut') : ''}
                         ${isVisible('formations') ? sbBtn('formations', 'Formations Post-Bac', 'graduation-cap') : ''}
                         ${isVisible('calendar') ? sbBtn('calendar', 'Planning & Agenda', 'calendar-days') : ''}
@@ -1070,7 +1079,7 @@
         }
 
         function renderAdminTheme() {
-            let customPages = DB.get('custom_pages') || [];
+            let customPages = (DB.get('custom_pages') || []).filter(p => !p.title.toLowerCase().includes('qr') && !p.title.toLowerCase().includes('badge'));
             let hiddenTabs = DB.get('hidden_tabs') || [];
             let currentQr = DB.get('home_qr_image') || '';
 
@@ -1161,7 +1170,12 @@
         async function createCustomPage(e) {
             e.preventDefault();
             let pages = DB.get('custom_pages') || [];
-            pages.push({ id: Date.now().toString(), title: document.getElementById('cp-title').value, content: document.getElementById('cp-content').value });
+            let title = document.getElementById('cp-title').value;
+            if (title.toLowerCase().includes('qr') || title.toLowerCase().includes('badge')) {
+                alert("Création non autorisée pour ce nom de page.");
+                return;
+            }
+            pages.push({ id: Date.now().toString(), title, content: document.getElementById('cp-content').value });
             await DB.set('custom_pages', pages);
             showToast("Succès", "Page créée !");
             render();
