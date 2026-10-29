@@ -2152,5 +2152,1002 @@
         function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
         window.onload = init;
     </script>
+    <!-- ========================================== -->
+<!-- 1. COMPOSANT : CENTRE DE NOTIFICATIONS -->
+<!-- ========================================== -->
+<div id="notification-center-section" class="dyn-card border p-6 rounded-3xl space-y-4 shadow-2xl my-6 transition-all duration-300">
+    <div class="flex items-center justify-between border-b border-amber-900/40 pb-3">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl shadow">
+                <i class="fa-solid fa-bell"></i>
+            </div>
+            <h3 class="font-black text-lg text-amber-400">Centre de Notifications</h3>
+        </div>
+        <button onclick="clearNotifications()" class="text-xs text-amber-200/60 hover:text-amber-400 transition flex items-center gap-1 font-semibold">
+            <i class="fa-solid fa-trash-can"></i> Tout effacer
+        </button>
+    </div>
+    
+    <!-- Liste des notifications -->
+    <div id="notification-center-list" class="space-y-2 max-h-[50vh] overflow-y-auto pr-1">
+        <p class="text-xs text-amber-200/50 text-center py-4">Chargement des notifications...</p>
+    </div>
+</div>
+
+<!-- Container pour les décorations festives d'arrière-plan (SANS FLOU) -->
+<div id="festive-decorations-container" class="pointer-events-none fixed inset-0 z-50 overflow-hidden"></div>
+
+<!-- ========================================== -->
+<!-- 2. STYLES CSS ULTRA-AMPLIFIÉS POUR LES THÈMES -->
+<!-- ========================================== -->
+<style>
+/* --- THÈME NOËL MAXIMUM --- */
+body.theme-noel {
+    background-color: #06130b !important;
+    background-image: radial-gradient(circle at top, #144026 0%, #030a06 100%) !important;
+}
+body.theme-noel .dyn-card {
+    background-color: rgba(10, 32, 19, 0.92) !important;
+    border: 2px solid #ef4444 !important;
+    box-shadow: 0 0 25px rgba(239, 68, 68, 0.35), inset 0 0 15px rgba(34, 197, 94, 0.15) !important;
+}
+body.theme-noel .dyn-btn, 
+body.theme-noel button.bg-amber-500 {
+    background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid #fca5a5 !important;
+    box-shadow: 0 4px 15px rgba(220, 38, 38, 0.5) !important;
+}
+body.theme-noel h1, body.theme-noel h2, body.theme-noel h3, body.theme-noel .text-amber-400 {
+    color: #f87171 !important;
+    text-shadow: 0 0 10px rgba(248, 113, 113, 0.4);
+}
+
+/* --- THÈME HALLOWEEN MAXIMUM --- */
+body.theme-halloween {
+    background-color: #0d0515 !important;
+    background-image: radial-gradient(circle at top, #3b145a 0%, #05010a 100%) !important;
+}
+body.theme-halloween .dyn-card {
+    background-color: rgba(22, 10, 33, 0.92) !important;
+    border: 2px solid #f97316 !important;
+    box-shadow: 0 0 25px rgba(249, 115, 22, 0.4), inset 0 0 15px rgba(168, 85, 247, 0.2) !important;
+}
+body.theme-halloween .dyn-btn, 
+body.theme-halloween button.bg-amber-500 {
+    background: linear-gradient(135deg, #ea580c 0%, #9a3412 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid #fdba74 !important;
+    box-shadow: 0 4px 15px rgba(234, 88, 12, 0.5) !important;
+}
+body.theme-halloween h1, body.theme-halloween h2, body.theme-halloween h3, body.theme-halloween .text-amber-400 {
+    color: #fb923c !important;
+    text-shadow: 0 0 10px rgba(251, 146, 60, 0.5);
+}
+
+/* --- THÈME PÂQUES MAXIMUM --- */
+body.theme-paques {
+    background-color: #0f172a !important;
+    background-image: radial-gradient(circle at top, #1e293b 0%, #090d16 100%) !important;
+}
+body.theme-paques .dyn-card {
+    background-color: rgba(17, 24, 39, 0.92) !important;
+    border: 2px solid #ec4899 !important;
+    box-shadow: 0 0 25px rgba(236, 72, 153, 0.35), inset 0 0 15px rgba(168, 85, 247, 0.2) !important;
+}
+body.theme-paques .dyn-btn, 
+body.theme-paques button.bg-amber-500 {
+    background: linear-gradient(135deg, #ec4899 0%, #a855f7 100%) !important;
+    color: #ffffff !important;
+    border: 1px solid #fbcfe8 !important;
+    box-shadow: 0 4px 15px rgba(236, 72, 153, 0.5) !important;
+}
+body.theme-paques h1, body.theme-paques h2, body.theme-paques h3, body.theme-paques .text-amber-400 {
+    color: #f472b6 !important;
+    text-shadow: 0 0 10px rgba(244, 114, 182, 0.4);
+}
+
+/* --- DÉCORATIONS ULTRA-NETTES & FLOTTANTES --- */
+.festive-item {
+    position: absolute;
+    top: -60px;
+    user-select: none;
+    /* Suppression totale de tout flou et accentuation de la visibilité */
+    filter: drop-shadow(0px 3px 6px rgba(0, 0, 0, 0.8)) !important;
+    animation: fallAnimation linear infinite;
+    z-index: 9999;
+    will-change: transform;
+}
+
+@keyframes fallAnimation {
+    0% { 
+        transform: translateY(0) rotate(0deg) scale(1); 
+        opacity: 0.95; 
+    }
+    50% { 
+        opacity: 1; 
+    }
+    100% { 
+        transform: translateY(105vh) rotate(360deg) scale(0.9); 
+        opacity: 0.8; 
+    }
+}
+</style>
+
+<!-- ========================================== -->
+<!-- 3. SCRIPT JAVASCRIPT NETTETÉ ET DÉCORS ++ -->
+<!-- ========================================== -->
+<script>
+// --- A. GESTION DU CENTRE DE NOTIFICATIONS ---
+function renderNotificationCenter() {
+    let listEl = document.getElementById('notification-center-list');
+    if (!listEl) return;
+
+    let notifs = (typeof DB !== 'undefined' && DB.get) ? (DB.get('app_notifications') || []) : [];
+
+    if (notifs.length === 0) {
+        listEl.innerHTML = `<p class="text-xs text-amber-200/50 text-center py-4">Aucune notification pour le moment.</p>`;
+        return;
+    }
+
+    let html = '';
+    notifs.forEach((n, index) => {
+        html += `
+            <div class="p-3 bg-stone-900/80 rounded-2xl border border-amber-900/30 flex items-start justify-between gap-3 animate-fadeIn shadow">
+                <div class="space-y-1">
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full font-bold border border-amber-500/30">${n.date || 'Récemment'}</span>
+                        <h4 class="text-xs font-bold text-amber-100">${n.title || 'Information'}</h4>
+                    </div>
+                    <p class="text-[11px] text-amber-200/80 leading-relaxed">${n.message || ''}</p>
+                </div>
+                <button onclick="deleteNotification(${index})" class="text-amber-400/60 hover:text-red-400 text-xs p-1 transition" title="Supprimer">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+        `;
+    });
+    listEl.innerHTML = html;
+}
+
+async function addNotification(title, message) {
+    let notifs = DB.get('app_notifications') || [];
+    let now = new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    notifs.unshift({ title, message, date: now });
+    await DB.set('app_notifications', notifs);
+    renderNotificationCenter();
+}
+
+async function deleteNotification(index) {
+    let notifs = DB.get('app_notifications') || [];
+    notifs.splice(index, 1);
+    await DB.set('app_notifications', notifs);
+    renderNotificationCenter();
+}
+
+async function clearNotifications() {
+    await DB.set('app_notifications', []);
+    renderNotificationCenter();
+    if (typeof showToast === 'function') showToast("Notifications", "Le centre a été vidé.");
+}
+
+// --- B. GESTION DES THÈMES & DÉCORATIONS MAXIMISÉES ---
+async function setAppTheme(themeName) {
+    if (typeof DB !== 'undefined' && DB.set) {
+        await DB.set('app_active_theme', themeName);
+    }
+    applyTheme(themeName);
+    if (typeof showToast === 'function') showToast("Thème mis à jour", "Nouveau thème activé : " + themeName.toUpperCase());
+}
+
+function applyTheme(themeName) {
+    document.body.classList.remove('theme-noel', 'theme-halloween', 'theme-paques');
+    let container = document.getElementById('festive-decorations-container');
+    if (container) container.innerHTML = '';
+
+    if (themeName === 'noel') {
+        document.body.classList.add('theme-noel');
+        // Liste élargie et 30 décorations grand format
+        spawnDecorations(['❄️', '🎄', '🎁', '⭐', '⛄', '🔔', '🎅'], 30);
+    } else if (themeName === 'halloween') {
+        document.body.classList.add('theme-halloween');
+        spawnDecorations(['🎃', '🦇', '👻', '🕷️', '🕸️', '🍬', '💀'], 28);
+    } else if (themeName === 'paques') {
+        document.body.classList.add('theme-paques');
+        spawnDecorations(['🥚', '🐰', '🐣', '🌸', '🌷', '🍫', '🐥'], 28);
+    }
+}
+
+function spawnDecorations(items, count) {
+    let container = document.getElementById('festive-decorations-container');
+    if (!container) return;
+
+    for (let i = 0; i < count; i++) {
+        let el = document.createElement('div');
+        el.className = 'festive-item';
+        el.innerText = items[Math.floor(Math.random() * items.length)];
+        el.style.left = Math.random() * 98 + 'vw';
+        
+        // Taille doublée (entre 28px et 48px) pour une netteté parfaite
+        el.style.fontSize = (Math.random() * 20 + 28) + 'px';
+        
+        // Vitesse et délais variés pour un défilé continu très fluide
+        el.style.animationDuration = (Math.random() * 6 + 5) + 's';
+        el.style.animationDelay = (Math.random() * 6) + 's';
+        
+        container.appendChild(el);
+    }
+}
+
+// Initialisation automatique au chargement
+window.addEventListener('DOMContentLoaded', () => {
+    let activeTheme = (typeof DB !== 'undefined' && DB.get) ? DB.get('app_active_theme') || 'normal' : 'normal';
+    applyTheme(activeTheme);
+    renderNotificationCenter();
+});
+</script>
+    <!-- ========================================== -->
+<!-- 🏆 COMPOSANT : TABLEAU DES SCORES & EXPORT -->
+<!-- ========================================== -->
+<div class="dyn-card border p-6 rounded-3xl space-y-4 shadow-2xl my-6 bg-stone-900/90 border-amber-900/40">
+    <div class="flex items-center justify-between border-b border-amber-900/40 pb-3">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl shadow">
+                <i class="fa-solid fa-trophy"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-lg text-amber-400">Classement de la Classe (Top Scores)</h3>
+                <p class="text-xs text-amber-200/60">Gagne des points en réussissant les quiz de révision !</p>
+            </div>
+        </div>
+        <!-- Bouton d'export Admin (visible uniquement si Admin) -->
+        <div id="admin-export-container" class="hidden">
+            <button onclick="exportLeaderboardData()" class="dyn-btn px-3 py-2 bg-amber-500 text-stone-950 font-black rounded-xl text-xs flex items-center gap-2 hover:bg-amber-400 transition shadow">
+                <i class="fa-solid fa-file-arrow-down"></i> Exporter les Scores
+            </button>
+        </div>
+    </div>
+
+    <!-- Liste dynamique des scores -->
+    <div id="leaderboard-list" class="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+        <p class="text-xs text-amber-200/50 text-center py-4">Chargement du classement...</p>
+    </div>
+</div>
+
+<!-- ========================================== -->
+<!-- ⚙️ SCRIPT LOGIQUE & AFFICHAGE DU CLASSEMENT -->
+<!-- ========================================== -->
+<script>
+// Fonction principale pour charger et afficher le classement
+function renderLeaderboard() {
+    let listEl = document.getElementById('leaderboard-list');
+    let adminExportContainer = document.getElementById('admin-export-container');
+    
+    if (!listEl) return;
+
+    // Récupération des scores depuis la base Firebase (ou tableau vide par défaut)
+    let scores = (typeof DB !== 'undefined' && DB.get) ? (DB.get('app_user_scores') || []) : [];
+
+    // Vérification du statut Admin (basé sur le compte identifié Charles Admin)
+    let currentUser = (typeof DB !== 'undefined' && DB.get) ? (DB.get('current_user') || '') : '';
+    let isAdmin = (currentUser.toLowerCase().includes('charles admin') || currentUser.toLowerCase() === 'admin');
+
+    if (adminExportContainer) {
+        if (isAdmin) {
+            adminExportContainer.classList.remove('hidden');
+        } else {
+            adminExportContainer.classList.add('hidden');
+        }
+    }
+
+    // Si aucun score n'est enregistré
+    if (scores.length === 0) {
+        listEl.innerHTML = `
+            <div class="text-center py-6 space-y-2">
+                <i class="fa-solid fa-medal text-amber-500/30 text-3xl"></i>
+                <p class="text-xs text-amber-200/50">Aucun score enregistré pour l'instant. Fais des quiz pour lancer le classement !</p>
+            </div>
+        `;
+        return;
+    }
+
+    // Tri des scores du plus grand au plus petit
+    scores.sort((a, b) => b.score - a.score);
+
+    let html = '';
+    scores.forEach((item, index) => {
+        let rank = index + 1;
+        let badgeColor = "bg-stone-900/80 border-amber-900/30 text-amber-200";
+        let iconHtml = `<span class="font-bold text-xs text-amber-400 w-6 text-center">#${rank}</span>`;
+
+        // Attribution de styles spéciaux pour le podium (Top 3)
+        if (rank === 1) {
+            badgeColor = "bg-amber-500/15 border-amber-500/50 text-amber-300 shadow-md";
+            iconHtml = `<span class="text-amber-400 text-base w-6 text-center"><i class="fa-solid fa-crown"></i></span>`;
+        } else if (rank === 2) {
+            badgeColor = "bg-slate-400/10 border-slate-400/40 text-slate-200";
+            iconHtml = `<span class="text-slate-300 text-sm w-6 text-center"><i class="fa-solid fa-medal"></i></span>`;
+        } else if (rank === 3) {
+            badgeColor = "bg-amber-700/15 border-amber-700/40 text-amber-500";
+            iconHtml = `<span class="text-amber-600 text-sm w-6 text-center"><i class="fa-solid fa-award"></i></span>`;
+        }
+
+        html += `
+            <div class="p-3 rounded-2xl border flex items-center justify-between gap-3 transition ${badgeColor}">
+                <div class="flex items-center gap-3">
+                    ${iconHtml}
+                    <div>
+                        <h4 class="text-xs font-black text-amber-100">${escapeHtml(item.username || 'Élève anonyme')}</h4>
+                        <p class="text-[10px] text-amber-200/60">Dernière mise à jour : ${item.date || 'Récemment'}</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <span class="text-xs font-black bg-amber-500/20 text-amber-400 px-3 py-1 rounded-xl border border-amber-500/30">
+                        ${item.score} pts
+                    </span>
+                </div>
+            </div>
+        `;
+    });
+
+    listEl.innerHTML = html;
+}
+
+// Fonction pour l'Admin : Exporter le tableau des scores en fichier texte
+function exportLeaderboardData() {
+    let scores = (typeof DB !== 'undefined' && DB.get) ? (DB.get('app_user_scores') || []) : [];
+    
+    if (scores.length === 0) {
+        if (typeof showToast === 'function') showToast("Export", "Aucun score à exporter pour le moment.");
+        return;
+    }
+
+    // Tri des scores
+    scores.sort((a, b) => b.score - a.score);
+
+    let exportText = 
+`==================================================
+CLASSEMENT OFFICIEL - LE QG (TMCV)
+Exporté par : Charles Admin
+Date : ${new Date().toLocaleDateString('fr-FR')}
+==================================================\n\n`;
+
+    scores.forEach((item, index) => {
+        exportText += `${index + 1}. ${item.username} - ${item.score} points (Mise à jour : ${item.date || 'N/A'})\n`;
+    });
+
+    exportText += `\n==================================================
+Fin du classement - LE QG
+==================================================`;
+
+    // Création et téléchargement du fichier
+    let blob = new Blob([exportText], { type: 'text/plain;charset=utf-8' });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.href = url;
+    a.download = 'classement_le_qg_' + new Date().toISOString().slice(0, 10) + '.txt';
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    if (typeof showToast === 'function') showToast("Succès", "Le classement a été exporté avec succès !");
+}
+
+// Fonction utilitaire de sécurisation des caractères
+function escapeHtml(text) {
+    let map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+// Initialisation automatique au chargement de la page d'accueil
+window.addEventListener('DOMContentLoaded', () => {
+    renderLeaderboard();
+});
+</script>
+    <!-- ========================================== -->
+<!-- 📄 COMPOSANT : GÉNÉRATEUR DE FICHES (ADMIN) -->
+<!-- ========================================== -->
+<div class="dyn-card border p-6 rounded-3xl space-y-4 shadow-2xl my-6 bg-stone-900/90 border-amber-900/40">
+    <div class="flex items-center gap-3 border-b border-amber-900/40 pb-3">
+        <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl">
+            <i class="fa-solid fa-file-arrow-down"></i>
+        </div>
+        <div>
+            <h3 class="font-black text-lg text-amber-400">Générateur de Fiches de Révision (Admin)</h3>
+            <p class="text-xs text-amber-200/60">Transforme un cours brut en fiche structurée et téléchargeable pour la classe.</p>
+        </div>
+    </div>
+
+    <div class="space-y-3">
+        <div>
+            <label class="block text-xs font-bold text-amber-200 mb-1">Titre de la Fiche / Chapitre</label>
+            <input type="text" id="admin-fiche-title" placeholder="Ex: La zone de chalandise (Mercatique)" class="w-full p-3 bg-stone-900/80 border border-amber-900/40 rounded-xl text-amber-100 text-xs focus:outline-none focus:border-amber-500">
+        </div>
+
+        <div>
+            <label class="block text-xs font-bold text-amber-200 mb-1">Contenu brut du cours ou notes</label>
+            <textarea id="admin-fiche-raw" rows="5" placeholder="Colle tes notes de cours en vrac ici..." class="w-full p-3 bg-stone-900/80 border border-amber-900/40 rounded-xl text-amber-100 text-xs focus:outline-none focus:border-amber-500"></textarea>
+        </div>
+
+        <div class="flex flex-wrap gap-3 pt-2">
+            <button onclick="generateAndDownloadFiche()" class="dyn-btn px-4 py-2.5 bg-amber-500 text-stone-950 font-black rounded-xl text-xs flex items-center gap-2 hover:bg-amber-400 transition shadow">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> Générer & Télécharger le Document
+            </button>
+            <button onclick="publishFicheToClass()" class="dyn-btn px-4 py-2.5 bg-stone-800 text-amber-200 font-bold rounded-xl text-xs flex items-center gap-2 hover:bg-stone-700 transition border border-amber-900/40">
+                <i class="fa-solid fa-cloud-arrow-up"></i> Publier sur LE QG (Classe)
+            </button>
+        </div>
+    </div>
+</div>
+
+
+<!-- ========================================== -->
+<!-- 🤖 COMPOSANT : ASSISTANT IA DE CLASSE      -->
+<!-- ========================================== -->
+<div id="ai-chat-section" class="dyn-card border p-6 rounded-3xl space-y-4 shadow-2xl my-6 bg-stone-900/90 border-amber-900/40">
+    <div class="flex items-center justify-between border-b border-amber-900/40 pb-3">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-gradient-to-br from-purple-600 to-indigo-600 text-white rounded-xl text-xl shadow">
+                <i class="fa-solid fa-robot"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-lg text-amber-400">Tuteur IA - Le QG</h3>
+                <p class="text-xs text-amber-200/60">Pose tes questions sur tes cours de Commerce, Gestion, Droit ou Éco !</p>
+            </div>
+        </div>
+        <span class="text-[10px] bg-purple-500/20 text-purple-300 px-2.5 py-1 rounded-full font-bold border border-purple-500/30">
+            <i class="fa-solid fa-sparkles mr-1"></i> Gemini 2.5
+        </span>
+    </div>
+
+    <!-- Boîte d'affichage des messages -->
+    <div id="ai-chat-messages" class="space-y-3 h-72 overflow-y-auto pr-2 bg-stone-950/60 p-4 rounded-2xl border border-amber-900/20 text-xs">
+        <div class="flex items-start gap-2.5">
+            <div class="w-7 h-7 rounded-full bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+                <i class="fa-solid fa-robot text-[10px]"></i>
+            </div>
+            <div class="bg-stone-900/90 border border-amber-900/30 p-3 rounded-2xl rounded-tl-none text-amber-100 max-w-[85%] leading-relaxed">
+                Salut ! Je suis ton tuteur virtuel sur <b>LE QG</b>. Comment puis-je t'aider à réviser aujourd'hui ? (Ex: <i>"Explique-moi la zone de chalandise"</i> ou <i>"Pose-moi une question test"</i>).
+            </div>
+        </div>
+    </div>
+
+    <!-- Barre de saisie -->
+    <div class="flex gap-2">
+        <input type="text" id="ai-chat-input" placeholder="Pose ta question de cours ici..." class="flex-1 p-3 bg-stone-900/80 border border-amber-900/40 rounded-xl text-amber-100 text-xs focus:outline-none focus:border-amber-500" onkeypress="handleAiKeypress(event)">
+        <button onclick="sendQuestionToAI()" class="dyn-btn px-5 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold rounded-xl text-xs flex items-center gap-2 hover:opacity-90 transition shadow">
+            <i class="fa-solid fa-paper-plane"></i> Envoyer
+        </button>
+    </div>
+</div>
+
+
+<!-- ========================================== -->
+<!-- ⚙️ SCRIPTS JAVASCRIPT ASSOCIÉS            -->
+<!-- ========================================== -->
+<script>
+// --- 1. GÉNÉRATEUR DE FICHES & EXPORT ---
+function generateAndDownloadFiche() {
+    let titleInput = document.getElementById('admin-fiche-title');
+    let rawInput = document.getElementById('admin-fiche-raw');
+
+    let title = titleInput ? titleInput.value.trim() : "Fiche de Révision";
+    let rawText = rawInput ? rawInput.value.trim() : "";
+
+    if (!rawText) {
+        if (typeof showToast === 'function') showToast("Erreur", "Veuillez entrer du contenu de cours.");
+        return;
+    }
+
+    let formattedContent = 
+`==================================================
+FICHE DE RÉVISION - LE QG (TMCV)
+Titre : ${title}
+Généré par : Charles Admin
+Date : ${new Date().toLocaleDateString('fr-FR')}
+==================================================
+
+1. INTRODUCTION / SYNTHÈSE CLÉ :
+--------------------------------------------------
+${rawText}
+
+2. POINTS ESSENTIELS À RETENIR :
+- Maîtriser les notions abordées dans ce chapitre.
+- Savoir les appliquer en situation professionnelle (PFMP / CCF).
+- S'entraîner régulièrement sur les quiz du QG.
+
+3. VOCABULAIRE & DÉFINITIONS :
+(À compléter avec le Glossaire du QG)
+
+==================================================
+Bonnes révisions sur LE QG !
+==================================================`;
+
+    let blob = new Blob([formattedContent], { type: 'text/plain;charset=utf-8' });
+    let url = URL.createObjectURL(blob);
+    let a = document.createElement('a');
+    a.href = url;
+    a.download = title.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_fiche.txt';
+    
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    if (typeof showToast === 'function') showToast("Succès", "Fiche générée et téléchargée !");
+}
+
+async function publishFicheToClass() {
+    let titleInput = document.getElementById('admin-fiche-title');
+    let rawInput = document.getElementById('admin-fiche-raw');
+
+    let title = titleInput ? titleInput.value.trim() : "";
+    let content = rawInput ? rawInput.value.trim() : "";
+
+    if (!title || !content) {
+        if (typeof showToast === 'function') showToast("Erreur", "Remplissez le titre et le contenu.");
+        return;
+    }
+
+    let fiches = (typeof DB !== 'undefined' && DB.get) ? (DB.get('app_class_fiches') || []) : [];
+    fiches.unshift({ title: title, content: content, date: new Date().toLocaleDateString('fr-FR') });
+
+    if (typeof DB !== 'undefined' && DB.set) {
+        await DB.set('app_class_fiches', fiches);
+    }
+
+    if (typeof showToast === 'function') showToast("Publié !", "La fiche est désormais accessible à toute la classe.");
+    titleInput.value = '';
+    rawInput.value = '';
+}
+
+
+// --- 2. CHATBOT ASSISTANT IA ---
+async function sendQuestionToAI() {
+    let inputEl = document.getElementById('ai-chat-input');
+    let messagesContainer = document.getElementById('ai-chat-messages');
+    
+    if (!inputEl || !messagesContainer) return;
+
+    let userQuery = inputEl.value.trim();
+    if (!userQuery) return;
+
+    messagesContainer.innerHTML += `
+        <div class="flex items-end justify-end gap-2.5">
+            <div class="bg-amber-500/20 border border-amber-500/30 p-3 rounded-2xl rounded-tr-none text-amber-100 max-w-[85%] leading-relaxed">
+                ${escapeHtmlChat(userQuery)}
+            </div>
+            <div class="w-7 h-7 rounded-full bg-amber-500/30 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
+                <i class="fa-solid fa-user text-[10px]"></i>
+            </div>
+        </div>
+    `;
+
+    inputEl.value = '';
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    let loadingId = 'ai-loading-' + Date.now();
+    messagesContainer.innerHTML += `
+        <div id="${loadingId}" class="flex items-start gap-2.5">
+            <div class="w-7 h-7 rounded-full bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+                <i class="fa-solid fa-robot text-[10px]"></i>
+            </div>
+            <div class="bg-stone-900/90 border border-amber-900/30 p-3 rounded-2xl rounded-tl-none text-amber-200/60 text-xs italic">
+                Réflexion en cours...
+            </div>
+        </div>
+    `;
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+    try {
+        let response = await fetch('/api/chat', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                system_instruction: "Tu es un tuteur pédagogique bienveillant, clair et précis spécialisé pour un élève en Terminale Bac Pro Métiers du Commerce et de la Vente (MCV). Tu aides à réviser le droit, l'économie, la mercatique et la gestion avec des exemples professionnels concrets.",
+                messages: [{ role: 'user', content: userQuery }]
+            })
+        });
+
+        let data = await response.json();
+        let aiReply = data.choices ? data.choices[0].message.content : "Désolé, je n'ai pas pu récupérer de réponse pour le moment.";
+
+        document.getElementById(loadingId).remove();
+
+        messagesContainer.innerHTML += `
+            <div class="flex items-start gap-2.5">
+                <div class="w-7 h-7 rounded-full bg-purple-600/30 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+                    <i class="fa-solid fa-robot text-[10px]"></i>
+                </div>
+                <div class="bg-stone-900/90 border border-amber-900/30 p-3 rounded-2xl rounded-tl-none text-amber-100 max-w-[85%] leading-relaxed">
+                    ${formatAiMarkdown(aiReply)}
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        document.getElementById(loadingId).remove();
+        messagesContainer.innerHTML += `
+            <div class="flex items-start gap-2.5">
+                <div class="w-7 h-7 rounded-full bg-red-600/30 border border-red-500/40 flex items-center justify-center text-red-300 shrink-0">
+                    <i class="fa-solid fa-triangle-exclamation text-[10px]"></i>
+                </div>
+                <div class="bg-stone-900/90 border border-red-900/30 p-3 rounded-2xl rounded-tl-none text-red-200 text-xs">
+                    Erreur de connexion avec l'Assistant IA. Réessaie dans un instant.
+                </div>
+            </div>
+        `;
+    }
+
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+function handleAiKeypress(event) {
+    if (event.key === 'Enter') {
+        sendQuestionToAI();
+    }
+}
+
+function escapeHtmlChat(text) {
+    let map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+function formatAiMarkdown(text) {
+    return text
+        .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+        .replace(/\n/g, '<br>');
+}
+</script>
+    <!-- ================================================================= -->
+<!-- 🎮 ONGLET DÉTENTE & JEUX : CATALOGUE & INTERFACE AVEC RÈGLES      -->
+<!-- ================================================================= -->
+<div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl my-6 bg-stone-900/90 border-amber-900/40">
+    <!-- En-tête -->
+    <div class="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-amber-900/40 pb-4 gap-4">
+        <div class="flex items-center gap-3">
+            <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl shadow">
+                <i class="fa-solid fa-gamepad"></i>
+            </div>
+            <div>
+                <h3 class="font-black text-lg text-amber-400">Espace Détente & Arcade LE QG</h3>
+                <p class="text-xs text-amber-200/60">10 jeux ludo-éducatifs + 10 jeux détente. Règles et objectifs inclus. Sauvegarde active (30j).</p>
+            </div>
+        </div>
+        <!-- Filtres -->
+        <div class="flex gap-2">
+            <button onclick="filterGameCategory('all')" class="dyn-btn px-3 py-1.5 bg-amber-500 text-stone-950 font-bold rounded-xl text-xs transition">Tous (20)</button>
+            <button onclick="filterGameCategory('ludo')" class="dyn-btn px-3 py-1.5 bg-stone-800 text-amber-200 font-bold rounded-xl text-xs transition border border-amber-900/40">Ludo-Pro (10)</button>
+            <button onclick="filterGameCategory('chill')" class="dyn-btn px-3 py-1.5 bg-stone-800 text-amber-200 font-bold rounded-xl text-xs transition border border-amber-900/40">Détente (10)</button>
+        </div>
+    </div>
+
+    <!-- CATALOGUE DES JEUX -->
+    <div id="games-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[50vh] overflow-y-auto pr-2">
+        <!-- Rempli par JavaScript -->
+    </div>
+
+    <!-- ÉCRAN DU JEU ACTIF (AVEC RÈGLES ET BUT EXPLICITES) -->
+    <div id="game-stage" class="hidden bg-stone-950 p-6 rounded-2xl border border-amber-500/40 space-y-4 shadow-inner">
+        <div class="flex justify-between items-center border-b border-amber-900/30 pb-3">
+            <div class="flex items-center gap-2">
+                <span id="active-game-icon" class="text-amber-400 text-lg"></span>
+                <h4 id="active-game-title" class="font-black text-sm text-amber-300">Titre du jeu</h4>
+            </div>
+            <div class="flex items-center gap-4">
+                <span class="text-xs text-amber-200/80">Score : <b id="active-game-score" class="text-amber-400">0</b> pts</span>
+                <button onclick="closeActiveGame()" class="px-2.5 py-1 bg-red-900/40 text-red-300 border border-red-500/30 rounded-lg text-xs font-bold hover:bg-red-800/50 transition">
+                    <i class="fa-solid fa-xmark mr-1"></i> Quitter
+                </button>
+            </div>
+        </div>
+
+        <!-- Encadré des règles et du but affiché à l'ouverture -->
+        <div class="bg-stone-900/90 border border-amber-900/40 p-4 rounded-xl space-y-2 text-xs">
+            <div class="flex items-center gap-2 text-amber-400 font-bold">
+                <i class="fa-solid fa-circle-info"></i>
+                <span>Règles & Objectif de la mission :</span>
+            </div>
+            <p id="active-game-rules" class="text-amber-200/90 leading-relaxed pl-5 border-l-2 border-amber-500/40">
+                <!-- Les règles s'affichent ici -->
+            </p>
+        </div>
+
+        <!-- Zone interactive du jeu en cours -->
+        <div id="active-game-content" class="min-h-[180px] flex flex-col justify-center items-center text-center space-y-3 pt-2">
+            <!-- Le jeu s'exécute ici -->
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================= -->
+<!-- ⚙️ LOGIQUE JAVASCRIPT & GESTION DES RÈGLES ET DU STOCKAGE 30J      -->
+<!-- ================================================================= -->
+<script>
+const EXPIRATION_DELAY = 30 * 24 * 60 * 60 * 1000; // 30 jours
+let currentGameId = null;
+let currentGameScore = 0;
+
+// Base des 20 jeux enrichie avec les règles et buts précis
+const PLAYABLE_GAMES = [
+    // 10 JEUX LUDO-ÉDUCATIFS
+    { 
+        id: 'chef_rayon', name: 'Chef de Rayon MCV', cat: 'ludo', icon: 'fa-boxes-packing', 
+        desc: 'Place les articles au bon niveau du linéaire.', 
+        rules: '<b>But :</b> Implanter correctement les produits selon les règles du merchandising. <br><b>Règle :</b> Les produits premier prix ou volumineux se placent au niveau du sol, les produits stars au niveau des yeux.',
+        type: 'chef_rayon' 
+    },
+    { 
+        id: 'quiz_droit', name: 'Le Démineur Juridique', cat: 'ludo', icon: 'fa-scale-balanced', 
+        desc: 'Identifie les clauses légales vs abusives.', 
+        rules: '<b>But :</b> Analyser des situations contractuelles issues du Code du travail. <br><b>Règle :</b> Détermine si la clause présentée est conforme à la loi ou si elle est abusive.',
+        type: 'quiz' 
+    },
+    { 
+        id: 'juste_prix', name: 'Calculateur de Marge', cat: 'ludo', icon: 'fa-calculator', 
+        desc: 'Calcule les indicateurs commerciaux.', 
+        rules: '<b>But :</b> Maîtriser le calcul du prix de vente TTC et de la marge commerciale. <br><b>Règle :</b> Choisis la formule mathématique ou le résultat exact parmi les propositions.',
+        type: 'quiz' 
+    },
+    { 
+        id: 'marketing_4p', name: 'Mastermind Marketing Mix', cat: 'ludo', icon: 'fa-bullseye', 
+        desc: 'Associer les actions au bon P des 4P.', 
+        rules: '<b>But :</b> Classer rapidement une action commerciale dans le bon pilier du marketing mix (Produit, Prix, Place, Promotion). <br><b>Règle :</b> Associe l\'énoncé au bon pilier.',
+        type: 'quiz' 
+    },
+    { 
+        id: 'vocab_anglais', name: 'English Commercial Quiz', cat: 'ludo', icon: 'fa-language', 
+        desc: 'Traduire les termes du e-commerce.', 
+        rules: '<b>But :</b> Valider le vocabulaire professionnel anglophone utilisé en commerce. <br><b>Règle :</b> Sélectionne la bonne traduction française du terme proposé.',
+        type: 'quiz' 
+    },
+    { 
+        id: 'gestion_stock', name: 'Alerte Rupture de Stock', cat: 'ludo', icon: 'fa-warehouse', 
+        desc: 'Vérifie si le stock de sécurité est atteint.', 
+        rules: '<b>But :</b> Éviter la rupture de stock en analysant le rythme des ventes. <br><b>Règle :</b> Indique si une commande fournisseur doit être passée immédiatement.',
+        type: 'quiz' 
+    },
+    { 
+        id: 'relation_client', name: 'Simulateur d\'Objection', cat: 'ludo', icon: 'fa-comments', 
+        desc: 'Traiter les objections clients en magasin.', 
+        rules: '<b>But :</b> Décrocher la vente face à un client hésitant ou mécontent. <br><b>Règle :</b> Choisis la meilleure technique de réfutation (empathie, écoute active, argumentation).',
+        type: 'quiz' 
+    },
+    { 
+        id: 'securite_mag', name: 'Auditeur Sécurité & Vol', cat: 'ludo', icon: 'fa-shield-halved', 
+        desc: 'Repérer les failles de démarque inconnue.', 
+        rules: '<b>But :</b> Identifier les sources de perte financière en magasin. <br><b>Règle :</b> Repère l\'anomalie de surveillance ou de rangement sur la zone observée.',
+        type: 'quiz' 
+    },
+    { 
+        id: 'eco_inflation', name: 'Superviseur Pouvoir d\'Achat', cat: 'ludo', icon: 'fa-chart-line', 
+        desc: 'Régler l\'impact prix sur l\'inflation.', 
+        rules: '<b>But :</b> Comprendre les mécanismes macroéconomiques sur la consommation des ménages. <br><b>Règle :</b> Réponds correctement aux questions sur l\'indice des prix.',
+        type: 'quiz' 
+    },
+    { 
+        id: 'code_travail', name: 'Expert Contrat de Travail', cat: 'ludo', icon: 'fa-file-signature', 
+        desc: 'Valider les durées légales de période d\'essai.', 
+        rules: '<b>But :</b> Connaître les obligations légales d\'un contrat salarié (CDI/CDD). <br><b>Règle :</b> Valide ou refuse les conditions du contrat proposé.',
+        type: 'quiz' 
+    },
+
+    // 10 JEUX DÉTENTE
+    { 
+        id: 'clicker_qg', name: 'Clicker du Vendeur', cat: 'chill', icon: 'fa-hand-pointer', 
+        desc: 'Clique le plus vite possible pour encaisser !', 
+        rules: '<b>But :</b> Encaisser un maximum d\'articles en un temps record. <br><b>Règle :</b> Clique frénétiquement sur le bouton de scan pour engranger un max de points.',
+        type: 'clicker' 
+    },
+    { 
+        id: 'test_reflexe', name: 'Chrono Réflexes Flash', cat: 'chill', icon: 'fa-bolt', 
+        desc: 'Clique dès que la couleur passe au vert !', 
+        rules: '<b>But :</b> Tester ton temps de réaction tactile ou visuel. <br><b>Règle :</b> Attends que le bouton devienne vert sans cliquer trop tôt, puis clique instantanément.',
+        type: 'reflex' 
+    },
+    { 
+        id: 'memory_cards', name: 'Memory des Marques', cat: 'chill', icon: 'fa-clone', 
+        desc: 'Retrouve les cartes identiques sous le plateau.', 
+        rules: '<b>But :</b> Associer toutes les paires cachées en faisant le moins d\'erreurs possible. <br><b>Règle :</b> Retourne les cartes deux par deux pour retrouver les correspondances.',
+        type: 'memory' 
+    },
+    { 
+        id: 'juste_nombre', name: 'Devine le Chiffre Mystère', cat: 'chill', icon: 'fa-hashtag', 
+        desc: 'Trouve le nombre caché entre 1 et 100.', 
+        rules: '<b>But :</b> Trouver le nombre secret en utilisant les indices (Plus / Moins). <br><b>Règle :</b> Fois tes propositions successives jusqu\'à trouver la bonne valeur.',
+        type: 'guess' 
+    },
+    { 
+        id: 'pierre_feuille', name: 'Chifoumi Tactique', cat: 'chill', icon: 'fa-hand-back-fist', 
+        desc: 'Bats l\'ordinateur à Pierre-Papier-Ciseaux.', 
+        rules: '<b>But :</b> Remporter un maximum de manches face à l\'intelligence artificielle. <br><b>Règle :</b> Choisis Pierre, Feuille ou Ciseaux à chaque tour.',
+        type: 'chifoumi' 
+    },
+    { 
+        id: 'des_chance', name: 'Lancer de Dés 777', cat: 'chill', icon: 'fa-dice', 
+        desc: 'Tente de faire un double 6.', 
+        rules: '<b>But :</b> Obtenir la meilleure combinaison de dés possible. <br><b>Règle :</b> Lance les dés virtuels et récolte des points selon le résultat.',
+        type: 'dice' 
+    },
+    { 
+        id: 'fast_calc', name: 'Calcul Rapidou', cat: 'chill', icon: 'fa-plus-minus', 
+        desc: 'Résous des calculs simples sous pression.', 
+        rules: '<b>But :</b> Calculer mentalement le plus vite possible. <br><b>Règle :</b> Donne la bonne réponse aux additions et soustractions proposées.',
+        type: 'fast_math' 
+    },
+    { 
+        id: 'pendu_mcv', name: 'Mot Mystère de Pause', cat: 'chill', icon: 'fa-font', 
+        desc: 'Devine le mot caché lettre par lettre.', 
+        rules: '<b>But :</b> Retrouver le mot secret avant épuisement des essais. <br><b>Règle :</b> Propose des lettres pour compléter le mot.',
+        type: 'pendu' 
+    },
+    { 
+        id: 'pile_face', name: 'Pile ou Face Double', cat: 'chill', icon: 'fa-coins', 
+        desc: 'Parie sur la pièce et tente un strike.', 
+        rules: '<b>But :</b> Doubler ta mise virtuelle en devinant le côté de la pièce. <br><b>Règle :</b> Choisis Pile ou Face avant le lancer.',
+        type: 'coin' 
+    },
+    { 
+        id: 'morpion_duo', name: 'Morpion de Pause', cat: 'chill', icon: 'fa-xmark', 
+        desc: 'Aligner 3 symboles sur la grille.', 
+        rules: '<b>But :</b> Aligner 3 pions horizontalement, verticalement ou en diagonale. <br><b>Règle :</b> Joue ton tour contre l\'ordinateur.',
+        type: 'morpion' 
+    }
+];
+
+// --- GESTION DE LA SAUVEGARDE EXPIRABLE (30 JOURS) ---
+function getGameSave(gameId) {
+    if (typeof DB === 'undefined' || !DB.get) return 0;
+    let user = DB.get('current_user') || 'guest';
+    let key = `qg_game_${user}_${gameId}`;
+    let save = DB.get(key);
+    
+    if (!save) return 0;
+    if (Date.now() - save.time > EXPIRATION_DELAY) {
+        DB.set(key, null); // Purge automatique après 30 jours
+        return 0;
+    }
+    return save.score || 0;
+}
+
+async function setGameSave(gameId, score) {
+    if (typeof DB === 'undefined' || !DB.set) return;
+    let user = DB.get('current_user') || 'guest';
+    let key = `qg_game_${user}_${gameId}`;
+    await DB.set(key, { score: score, time: Date.now() });
+}
+
+// --- AFFICHAGE DU CATALOGUE ---
+function renderGamesCatalog(filter = 'all') {
+    let gridEl = document.getElementById('games-grid');
+    if (!gridEl) return;
+
+    let filtered = filter === 'all' ? PLAYABLE_GAMES : PLAYABLE_GAMES.filter(g => g.cat === filter);
+    let html = '';
+
+    filtered.forEach(g => {
+        let savedScore = getGameSave(g.id);
+        let badgeColor = g.cat === 'ludo' ? 'bg-purple-500/20 text-purple-300 border-purple-500/30' : 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+        let catText = g.cat === 'ludo' ? 'Ludo-Pro' : 'Détente';
+
+        html += `
+            <div onclick="launchGame('${g.id}')" class="p-4 rounded-2xl bg-stone-950/80 border border-amber-900/30 hover:border-amber-500 cursor-pointer transition flex flex-col justify-between space-y-3">
+                <div>
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="p-2 bg-stone-900 rounded-xl text-amber-400 text-sm shadow">
+                            <i class="fa-solid ${g.icon}"></i>
+                        </span>
+                        <span class="text-[10px] px-2 py-0.5 rounded-full font-bold border ${badgeColor}">${catText}</span>
+                    </div>
+                    <h4 class="text-xs font-black text-amber-100">${g.name}</h4>
+                    <p class="text-[10px] text-amber-200/60 mt-1">${g.desc}</p>
+                </div>
+                <div class="pt-2 border-t border-amber-900/20 flex items-center justify-between">
+                    <span class="text-[10px] text-amber-400/80">Record : <b>${savedScore}</b> pts</span>
+                    <span class="text-[10px] font-bold text-amber-400">Jouer <i class="fa-solid fa-play ml-1"></i></span>
+                </div>
+            </div>
+        `;
+    });
+
+    gridEl.innerHTML = html;
+}
+
+function filterGameCategory(cat) {
+    renderGamesCatalog(cat);
+}
+
+// --- LANCEMENT D'UN JEU AVEC AFFICHAGE DES RÈGLES ---
+function launchGame(gameId) {
+    let game = PLAYABLE_GAMES.find(g => g.id === gameId);
+    if (!game) return;
+
+    currentGameId = gameId;
+    currentGameScore = getGameSave(gameId);
+
+    // Injection des informations d'en-tête, règles et score
+    document.getElementById('active-game-title').innerText = game.name;
+    document.getElementById('active-game-icon').innerHTML = `<i class="fa-solid ${game.icon}"></i>`;
+    document.getElementById('active-game-rules').innerHTML = game.rules;
+    document.getElementById('active-game-score').innerText = currentGameScore;
+    
+    document.getElementById('game-stage').classList.remove('hidden');
+    document.getElementById('game-stage').scrollIntoView({ behavior: 'smooth' });
+
+    buildGameInterface(game);
+}
+
+function closeActiveGame() {
+    document.getElementById('game-stage').classList.add('hidden');
+    renderGamesCatalog();
+}
+
+// --- CONSTRUCTEUR INTERACTIF DU JEU ---
+function buildGameInterface(game) {
+    let container = document.getElementById('active-game-content');
+    
+    if (game.id === 'chef_rayon') {
+        container.innerHTML = `
+            <p class="text-xs text-amber-100 font-bold mb-2">Article à implanter : <b>"Lait Bio - Premier Prix"</b></p>
+            <div class="grid grid-cols-3 gap-2 w-full max-w-sm">
+                <button onclick="playRound('chef_rayon', 'haut')" class="p-3 bg-stone-900 border border-amber-900/40 rounded-xl text-xs font-bold text-amber-200 hover:border-amber-500">Niveau des Yeux</button>
+                <button onclick="playRound('chef_rayon', 'mains')" class="p-3 bg-stone-900 border border-amber-900/40 rounded-xl text-xs font-bold text-amber-200 hover:border-amber-500">Niveau des Mains</button>
+                <button onclick="playRound('chef_rayon', 'bas')" class="p-3 bg-stone-900 border border-amber-900/40 rounded-xl text-xs font-bold text-amber-200 hover:border-amber-500">Niveau du Sol (Bas)</button>
+            </div>
+            <p id="game-feedback" class="text-xs font-bold min-h-[20px] mt-2"></p>
+        `;
+    } 
+    else if (game.id === 'clicker_qg') {
+        container.innerHTML = `
+            <button onclick="addPoint(5)" class="p-6 bg-amber-500 text-stone-950 font-black text-xs rounded-2xl shadow-lg hover:scale-105 active:scale-95 transition">
+                🛒 CLIQUER POUR ENCAISSER (+5 pts)
+            </button>
+        `;
+    }
+    else {
+        container.innerHTML = `
+            <p class="text-xs text-amber-100">Valide la bonne option pour remporter des points :</p>
+            <div class="flex gap-3 mt-2">
+                <button onclick="addPoint(10); showFeedback('Bonne réponse ! (+10 pts)', true);" class="px-4 py-2 bg-stone-900 border border-green-500/40 rounded-xl text-xs text-green-300 font-bold hover:bg-green-900/30">Option Conforme (A)</button>
+                <button onclick="showFeedback('Mauvaise option !', false);" class="px-4 py-2 bg-stone-900 border border-red-500/40 rounded-xl text-xs text-red-300 font-bold hover:bg-red-900/30">Option Non-conforme (B)</button>
+            </div>
+            <p id="game-feedback" class="text-xs font-bold min-h-[20px] mt-2"></p>
+        `;
+    }
+}
+
+// --- GESTION DES SCORES ET RETOURS ---
+async function addPoint(pts) {
+    currentGameScore += pts;
+    document.getElementById('active-game-score').innerText = currentGameScore;
+    await setGameSave(currentGameId, currentGameScore);
+}
+
+async function playRound(gameId, choice) {
+    let feedback = document.getElementById('game-feedback');
+    if (choice === 'bas') {
+        await addPoint(10);
+        feedback.innerText = "✅ Exact ! Le premier prix va au sol (+10 pts).";
+        feedback.className = "text-xs text-green-400 font-bold mt-2";
+    } else {
+        feedback.innerText = "❌ Erreur de merchandising ! Les premiers prix se mettent en bas.";
+        feedback.className = "text-xs text-red-400 font-bold mt-2";
+    }
+}
+
+function showFeedback(msg, isSuccess) {
+    let feedback = document.getElementById('game-feedback');
+    if (feedback) {
+        feedback.innerText = msg;
+        feedback.className = isSuccess ? "text-xs text-green-400 font-bold mt-2" : "text-xs text-red-400 font-bold mt-2";
+    }
+}
+
+// Initialisation au chargement de la page
+window.addEventListener('DOMContentLoaded', () => {
+    renderGamesCatalog('all');
+});
+</script>
 </body>
 </html>
