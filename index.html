@@ -73,9 +73,7 @@
                     <button onclick="toggleModal('notifications-modal', false)" class="text-amber-200/70 hover:text-white p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
                 </div>
             </div>
-            <div id="notifications-list-container" class="flex-1 overflow-y-auto space-y-2.5 pr-1">
-                <!-- Les notifications s'injectent ici -->
-            </div>
+            <div id="notifications-list-container" class="flex-1 overflow-y-auto space-y-2.5 pr-1"></div>
         </div>
     </div>
 
@@ -109,7 +107,6 @@
         window.addEventListener('beforeinstallprompt', (e) => {
             e.preventDefault();
             deferredPrompt = e;
-            render();
         });
 
         let cloudData = {
@@ -130,7 +127,7 @@
             custom_pages: [],
             hidden_tabs: [],
             orientation_models: [],
-            app_notifications: [], // Centre de notifications global
+            app_notifications: [],
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' },
             site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)', bgMedia: '', mode: 'dark' },
             home_qr_image: ''
@@ -144,7 +141,6 @@
                     try { await db.collection("leqg_data").doc(k).set({ value: val }); } catch(err) { console.error(err); }
                 }
                 applyTheme();
-                render();
             }
         };
 
@@ -164,7 +160,7 @@
         };
 
         async function init() {
-            if ("Notification-permission" in window && Notification.permission !== "granted") {
+            if ("Notification" in window && Notification.permission !== "granted") {
                 Notification.requestPermission();
             }
             if (db) {
@@ -188,20 +184,25 @@
             render();
 
             setInterval(async () => {
-                if (db) {
+                if (db && getCurrentUser()) {
                     try {
                         const keys = Object.keys(cloudData);
+                        let updated = false;
                         for (let k of keys) {
                             let doc = await db.collection("leqg_data").doc(k).get();
-                            if (doc.exists) cloudData[k] = doc.data().value;
+                            if (doc.exists && JSON.stringify(doc.data().value) !== JSON.stringify(cloudData[k])) {
+                                cloudData[k] = doc.data().value;
+                                updated = true;
+                            }
                         }
-                        render();
+                        if (updated) {
+                            updateNotificationsModalContent(getCurrentUser());
+                        }
                     } catch(e){}
                 }
-            }, 4000);
+            }, 6000);
         }
 
-        // --- GESTION DES NOTIFICATIONS ---
         async function pushNotification(title, message, targetRole = 'all') {
             let notifs = DB.get('app_notifications') || [];
             notifs.unshift({
@@ -213,12 +214,10 @@
                 date: new Date().toLocaleDateString(),
                 read: false
             });
-            // Garder les 50 dernières
             if (notifs.length > 50) notifs = notifs.slice(0, 50);
             await DB.set('app_notifications', notifs);
             showToast(title, message);
 
-            // Déclenchement de la notification native téléphone (APK / PWA / Bureau)
             if ("Notification" in window && Notification.permission === "granted") {
                 try {
                     new Notification(title, {
@@ -445,12 +444,11 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <!-- Centre de Notifications -->
                         <button onclick="toggleModal('notifications-modal', true)" class="relative px-3 py-1.5 bg-stone-900 border border-amber-500/40 text-amber-300 text-xs rounded-xl font-bold flex items-center gap-1.5">
                             <i class="fa-solid fa-bell"></i> Notifications
                             <span id="notif-badge-count" class="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold" style="display:none">0</span>
                         </button>
-                        <button onclick="installPWA()" class="px-3 py-1.5 dyn-btn text-white text-xs rounded-xl font-bold flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen"></i> Installer App</button>
+                        <button onclick="installPWA()" class="px-3 py-1.5 dyn-btn text-white text-xs rounded-xl font-bold flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen"></i> App Mobile</button>
                         <button onclick="logout()" class="px-3 py-1.5 bg-stone-900 text-amber-200 text-xs rounded-xl border">Déconnexion</button>
                     </div>
                 </header>
@@ -525,7 +523,7 @@
                 </div>
                 <div class="dyn-card border p-8 space-y-3 rounded-3xl">
                     <h2 class="text-2xl font-black text-white">Bienvenue sur LE QG</h2>
-                    <p class="text-xs text-amber-200/75">Plateforme collaborative de classe 100% synchronisée avec notifications mobiles.</p>
+                    <p class="text-xs text-amber-200/75">Plateforme collaborative de classe 100% synchronisée.</p>
                 </div>
                 <div class="dyn-card border p-6 rounded-3xl space-y-3">
                     <h3 class="font-bold text-amber-400 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>QR Code d'accès mobile</h3>
@@ -772,9 +770,13 @@
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl flex justify-between items-center">
                     <div><h2 class="text-xl font-black text-amber-400">Quiz Disponibles & Progression</h2></div>
-                    <div class="text-right"><span class="text-xs text-amber-200/70">Moyenne Générale :</span><div class="text-xl font-extrabold text-amber-400">${avgGeneral} / 20</div></div>
+                    <div class="text-right"><span class="text-xs text-amber-200/70">Moyenne Générale (Meilleures Notes) :</span><div class="text-xl font-extrabold text-amber-400">${avgGeneral} / 20</div></div>
                 </div>
                 <div class="space-y-2">${quizzes.map(q=>`<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span>${q.title}</span><button onclick="state.activeQuizId=${q.id};render()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Refaire / Lancer</button></div>`).join('')}</div>
+                <div class="dyn-card border p-6 rounded-3xl space-y-2">
+                    <h3 class="font-bold text-amber-300">Ma Progression (Meilleures Notes retenues)</h3>
+                    ${bestList.length === 0 ? '<p class="text-amber-200/50">Aucun quiz complété.</p>' : bestList.map(s => `<div class="p-2 bg-stone-900 rounded flex justify-between"><span>${s.quizTitle} (${s.date})</span><span class="font-bold text-amber-400">${s.score} / ${s.total}</span></div>`).join('')}
+                </div>
             </div>`;
         }
 
@@ -790,7 +792,6 @@
             subs[user.username].push({ quizId, quizTitle: quiz.title, score, total: quiz.questions.length, date: new Date().toLocaleDateString() });
             await DB.set('quiz_submissions', subs);
 
-            // Notification pour l'administrateur
             await pushNotification("Réponse à un Quiz", `${user.pseudo || user.username} a répondu au quiz "${quiz.title}" (${score}/${quiz.questions.length}).`, "admin");
 
             showToast("Quiz validé", `Score : ${score}/${quiz.questions.length}`);
@@ -841,7 +842,6 @@
             polls[pIdx].results[oIdx] = (polls[pIdx].results[oIdx] || 0) + 1;
             await DB.set('polls', polls);
 
-            // Notification pour l'administrateur
             await pushNotification("Réponse à un Sondage", `${user.pseudo || user.username} a voté au sondage "${polls[pIdx].question}".`, "admin");
 
             showToast("Vote enregistré", "Merci pour votre participation !");
@@ -878,6 +878,26 @@
                             <div class="flex justify-between items-start">
                                 <div><h3 class="font-bold text-amber-300 text-sm">${e.title}</h3><span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-bold">${e.category || 'Sujet Type Bac'}</span></div>
                             </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
+                                <div class="p-3 bg-stone-900 rounded-xl border flex justify-between items-center">
+                                    <span>Sujet</span>
+                                    <div class="flex gap-2">
+                                        ${e.subjectType === 'url' ? `<a href="${e.subjectData}" target="_blank" class="px-2.5 py-1 bg-stone-950 text-amber-200 rounded font-bold">Ouvrir le lien</a>` : `
+                                            <button onclick="openFileViewer('${e.title} - Sujet', '${e.subjectData}', '${e.subjectType}')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Aperçu</button>
+                                            <a href="${e.subjectData}" download class="px-2.5 py-1 dyn-btn text-white rounded font-bold">Télécharger</a>
+                                        `}
+                                    </div>
+                                </div>
+                                <div class="p-3 bg-stone-900 rounded-xl border flex justify-between items-center">
+                                    <span>Corrigé</span>
+                                    <div class="flex gap-2">
+                                        ${e.corrType === 'url' ? `<a href="${e.corrData}" target="_blank" class="px-2.5 py-1 bg-stone-950 text-amber-200 rounded font-bold">Ouvrir le lien</a>` : `
+                                            <button onclick="openFileViewer('${e.title} - Corrigé', '${e.corrData}', '${e.corrType}')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Aperçu</button>
+                                            <a href="${e.corrData}" download class="px-2.5 py-1 dyn-btn text-white rounded font-bold">Télécharger</a>
+                                        `}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     `).join('')}
                 </div>
@@ -886,13 +906,31 @@
 
         function renderDocumentsTab(user) {
             let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + user.username) || '[]');
+            if (state.editingDocIndex !== null) {
+                let doc = docs[state.editingDocIndex] || { title: '', content: '' };
+                return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h2 class="text-lg font-black text-amber-400">Édition du document</h2>
+                        <button onclick="state.editingDocIndex=null;render()" class="px-3 py-1 bg-stone-900 border rounded-xl text-amber-200 font-bold">Retour</button>
+                    </div>
+                    <form onsubmit="saveDocContent(event, '${user.username}', ${state.editingDocIndex})" class="space-y-4">
+                        <input type="text" id="doc-title-inp" value="${doc.title}" required class="w-full p-3 bg-stone-900 border rounded-xl text-white text-sm font-bold">
+                        <textarea id="doc-content-inp" required class="w-full p-4 bg-stone-900 border rounded-xl h-64 text-white text-xs">${doc.content}</textarea>
+                        <button type="submit" class="px-5 py-2.5 dyn-btn text-white font-bold rounded-xl">Enregistrer</button>
+                    </form>
+                </div>`;
+            }
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl space-y-3">
                     <h2 class="text-xl font-black text-amber-400">Mon Traitement de Texte</h2>
-                    <button onclick="openNewDocModal('${user.username}')" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl shadow-lg">+ Nouveau Document</button>
+                    <button onclick="openNewDocModal('${user.username}')" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">+ Nouveau Document</button>
+                </div>
+                <div class="space-y-2">
+                    ${docs.map((d, idx) => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="cursor-pointer font-bold text-amber-200" onclick="state.editingDocIndex=${idx};render()">${d.title}</span><button onclick="deleteTextDoc('${user.username}', ${idx})" class="text-red-400"><i class="fa-solid fa-trash"></i></button></div>`).join('')}
                 </div>
             </div>`;
         }
+
         function openNewDocModal(username) {
             let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + username) || '[]');
             docs.push({ title: 'Nouveau Document', content: '' });
@@ -901,13 +939,42 @@
             render();
         }
 
-        function renderFlashcardsTab(user) { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Flashcards</h2></div>`; }
-        function renderOrientationTab() { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Orientation</h2></div>`; }
+        function saveDocContent(e, username, idx) {
+            e.preventDefault();
+            let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + username) || '[]');
+            if (docs[idx]) {
+                docs[idx].title = document.getElementById('doc-title-inp').value;
+                docs[idx].content = document.getElementById('doc-content-inp').value;
+                localStorage.setItem('leqg_txt_docs_' + username, JSON.stringify(docs));
+                showToast("Enregistré !", "Sauvegardé.");
+                state.editingDocIndex = null;
+                render();
+            }
+        }
+
+        function deleteTextDoc(username, idx) {
+            if (!confirm("Supprimer ce document ?")) return;
+            let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + username) || '[]');
+            docs.splice(idx, 1);
+            localStorage.setItem('leqg_txt_docs_' + username, JSON.stringify(docs));
+            render();
+        }
+
+        function renderFlashcardsTab(user) {
+            let decks = JSON.parse(localStorage.getItem('leqg_fc_decks_' + user.username) || '[]');
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">Flashcards (${decks.length})</h2></div></div>`;
+        }
+
+        function renderOrientationTab() { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">CV & Lettres</h2></div>`; }
         function renderSimulatorTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Simulateur</h2></div>`; }
-        function renderMoodTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Humeurs</h2></div>`; }
+        function renderMoodTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Humeur</h2></div>`; }
         function renderPomodoroTab() { return `<div class="max-w-md mx-auto dyn-card border p-8 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Pomodoro</h2></div>`; }
         function renderGoldBookTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Livre d'or</h2></div>`; }
-        function renderCustomPage(pageId) { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs">Page</div>`; }
+        function renderCustomPage(pageId) {
+            let pages = DB.get('custom_pages') || [];
+            let p = pages.find(x => x.id === pageId);
+            return p ? `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs space-y-4"><h2 class="text-xl font-black text-amber-400">${p.title}</h2><div>${p.content}</div></div>` : '';
+        }
         function renderIdeasPage() { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Boîte à idées</h2></div>`; }
 
         function renderChat(user) {
@@ -917,7 +984,7 @@
             return `<div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 h-[500px] text-xs">
                 <div class="dyn-card border p-3 flex flex-col space-y-2 rounded-3xl">
                     <button onclick="state.chatMode='general';render()" class="p-2.5 rounded-xl ${state.chatMode==='general'?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">📢 Canal Général</button>
-                    <div class="text-[10px] text-amber-400 font-bold pt-2">Conversations Privées :</div>
+                    <div class="text-[10px] text-amber-400 font-bold pt-2">Privés :</div>
                     <div class="flex-1 overflow-y-auto space-y-1">
                         ${users.filter(u => u.username !== user.username).map(u => `
                             <button onclick="state.chatMode='private';state.targetUser='${u.username}';render()" class="w-full text-left p-2 rounded-xl flex items-center gap-2 ${state.chatMode==='private' && state.targetUser===u.username?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">
@@ -958,9 +1025,9 @@
                 time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             });
             await DB.set('messages', msgs);
-
-            // Notification globale pour le chat
-            await pushNotification("Nouveau Message de Chat", `${user.pseudo || user.username} a posté un message : "${text.substring(0, 35)}..."`);
+            document.getElementById('c-inp').value = '';
+            render();
+            await pushNotification("Nouveau Message", `${user.pseudo || user.username} : ${text.substring(0, 30)}...`);
         }
 
         // --- ESPACE ADMIN ---
@@ -970,53 +1037,134 @@
                     <button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes</button>
                     <button onclick="state.adminSub='quizzes';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='quizzes'?'dyn-btn text-white':'bg-stone-900'}">Quiz</button>
                     <button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches</button>
-                    <button onclick="state.adminSub='polls';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='polls'?'dyn-btn text-white':'bg-stone-900'}">Sondages</button>
+                    <button onclick="state.adminSub='theme';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='theme'?'dyn-btn text-white':'bg-stone-900'}">Thème & Pages</button>
                 </div>
                 ${state.adminSub==='users'?renderAdminUsers():''}
                 ${state.adminSub==='quizzes'?renderAdminQuizzes():''}
                 ${state.adminSub==='docs'?renderAdminDocs():''}
-                ${state.adminSub==='polls'?renderAdminPolls():''}
+                ${state.adminSub==='theme'?renderAdminTheme():''}
             </div>`;
         }
 
-        function renderAdminUsers() { return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion Comptes</h3></div>`; }
-        function renderAdminQuizzes() { return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion Quiz</h3></div>`; }
+        function renderAdminUsers() { return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion des Comptes</h3></div>`; }
+        function renderAdminQuizzes() { return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion des Quiz</h3></div>`; }
         
         function renderAdminDocs() {
-            let revisions = DB.get('revision_sheets') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <h3 class="font-bold text-amber-300">Gestion des Fiches & Documents</h3>
-                <form onsubmit="uploadDoc(event, 'revision_sheets')" class="p-4 bg-stone-900 rounded-2xl border space-y-2">
-                    <h4 class="font-bold text-amber-400">Ajouter Fiche de Révision / Document</h4>
-                    <input type="text" id="rev-title" required placeholder="Titre..." class="w-full p-2 bg-stone-950 border rounded-xl">
-                    <input type="file" id="rev-file" accept=".pdf,image/*" class="w-full p-2 bg-stone-950 border rounded-xl text-xs">
-                    <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Ajouter et Notifier la classe</button>
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
+                <h3 class="font-bold text-amber-300">Publication de Fichiers</h3>
+                <form onsubmit="uploadDoc(event)" class="space-y-2">
+                    <input type="text" id="rev-title" required placeholder="Titre..." class="w-full p-2 bg-stone-900 border rounded-xl">
+                    <button type="submit" class="dyn-btn px-4 py-2 text-white rounded-xl font-bold">Publier et notifier</button>
                 </form>
             </div>`;
         }
 
-        async function uploadDoc(e, type) {
+        async function uploadDoc(e) {
             e.preventDefault();
             let title = document.getElementById('rev-title').value;
-            let file = document.getElementById('rev-file').files[0];
-            if (file) {
+            let list = DB.get('revision_sheets') || [];
+            list.push({ title, fileData: '#', fileType: 'url' });
+            await DB.set('revision_sheets', list);
+            showToast("Succès", "Fiche publiée !");
+            await pushNotification("Nouveau Document", `La fiche "${title}" a été publiée.`);
+        }
+
+        function renderAdminTheme() {
+            let customPages = DB.get('custom_pages') || [];
+            let hiddenTabs = DB.get('hidden_tabs') || [];
+            let currentQr = DB.get('home_qr_image') || '';
+
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
+                <h3 class="font-bold text-amber-300">Gestion des Pages "Carte Blanche" & Masquage</h3>
+                <div class="space-y-2">
+                    ${customPages.length === 0 ? '<p class="text-amber-200/50">Aucune page personnalisée.</p>' : ''}
+                    ${customPages.map((page, index) => {
+                        let tabId = 'cp_' + page.id;
+                        let isHidden = hiddenTabs.includes(tabId);
+                        return `
+                            <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center">
+                                <span class="font-bold text-white">${page.title}</span>
+                                <div class="flex gap-2">
+                                    <button onclick="toggleHideCustomPage('${tabId}')" class="px-2.5 py-1 ${isHidden ? 'bg-amber-600 text-white' : 'bg-stone-950 border text-amber-200'} rounded-lg font-bold">
+                                        <i class="fa-solid ${isHidden ? 'fa-eye' : 'fa-eye-slash'}"></i> ${isHidden ? 'Afficher' : 'Masquer'}
+                                    </button>
+                                    <button onclick="deleteCustomPageDirect(${index})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded-lg font-bold">
+                                        <i class="fa-solid fa-trash"></i> Supprimer
+                                    </button>
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+
+                <div class="border-t border-amber-900/40 pt-4 space-y-3">
+                    <h3 class="font-bold text-amber-300">Gestion du QR Code (Accueil)</h3>
+                    ${currentQr ? `<img src="${currentQr}" width="80" class="rounded-lg"/>` : ''}
+                    <div class="flex gap-2 items-center">
+                        <input type="file" id="admin-home-qr-file" accept="image/*" class="p-2 bg-stone-900 border rounded-xl text-xs flex-1">
+                        <button onclick="saveAdminHomeQr()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Mettre à jour</button>
+                    </div>
+                </div>
+
+                <div class="border-t border-amber-900/40 pt-4 space-y-3">
+                    <h3 class="font-bold text-amber-300">Créer une page "Carte Blanche"</h3>
+                    <form onsubmit="createCustomPage(event)" class="space-y-2">
+                        <input type="text" id="cp-title" required placeholder="Titre..." class="w-full p-2 bg-stone-900 border rounded-xl">
+                        <textarea id="cp-content" required placeholder="Contenu HTML..." class="w-full p-2 bg-stone-900 border rounded-xl h-16"></textarea>
+                        <button type="submit" class="w-full py-2 dyn-btn text-white rounded-xl font-bold">Créer</button>
+                    </form>
+                </div>
+            </div>`;
+        }
+
+        async function deleteCustomPageDirect(index) {
+            if (!confirm("Supprimer cette page ?")) return;
+            let customPages = DB.get('custom_pages') || [];
+            let deleted = customPages.splice(index, 1)[0];
+            if (deleted) {
+                let hiddenTabs = DB.get('hidden_tabs') || [];
+                hiddenTabs = hiddenTabs.filter(id => id !== 'cp_' + deleted.id);
+                await DB.set('hidden_tabs', hiddenTabs);
+            }
+            await DB.set('custom_pages', customPages);
+            showToast("Supprimé", "Page effacée.");
+            render();
+        }
+
+        async function toggleHideCustomPage(tabId) {
+            let hiddenTabs = DB.get('hidden_tabs') || [];
+            if (hiddenTabs.includes(tabId)) {
+                hiddenTabs = hiddenTabs.filter(id => id !== tabId);
+                showToast("Visible", "Page visible pour tous.");
+            } else {
+                hiddenTabs.push(tabId);
+                if (state.tab === tabId) state.tab = 'home';
+                showToast("Masquée", "Page masquée pour tout le monde.");
+            }
+            await DB.set('hidden_tabs', hiddenTabs);
+            render();
+        }
+
+        async function saveAdminHomeQr() {
+            let fileInput = document.getElementById('admin-home-qr-file');
+            if (fileInput.files && fileInput.files[0]) {
                 let reader = new FileReader();
                 reader.onload = async (ev) => {
-                    let list = DB.get(type) || [];
-                    list.push({ title, fileData: ev.target.result, fileType: file.type });
-                    await DB.set(type, list);
-
-                    // Notification globale pour le nouveau fichier/document
-                    await pushNotification("Nouveau Document Disponible !", `Un nouveau fichier "${title}" vient d'être publié dans Fiches de Révision.`);
-
-                    showToast("Succès", "Document importé et notification envoyée !");
+                    await DB.set('home_qr_image', ev.target.result);
+                    showToast("Succès", "QR code mis à jour !");
+                    render();
                 };
-                reader.readAsDataURL(file);
+                reader.readAsDataURL(fileInput.files[0]);
             }
         }
 
-        function renderAdminPolls() {
-            return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion Sondages</h3></div>`;
+        async function createCustomPage(e) {
+            e.preventDefault();
+            let pages = DB.get('custom_pages') || [];
+            pages.push({ id: Date.now().toString(), title: document.getElementById('cp-title').value, content: document.getElementById('cp-content').value });
+            await DB.set('custom_pages', pages);
+            showToast("Succès", "Page créée !");
+            render();
         }
 
         async function handleLogin(e) {
@@ -1032,6 +1180,10 @@
             e.preventDefault();
             let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
             if(idx !== -1) {
+                if (user.role === 'admin') {
+                    let newUsername = document.getElementById('s-username').value.trim();
+                    if (newUsername) users[idx].username = newUsername;
+                }
                 users[idx].realName = document.getElementById('s-lastname').value;
                 users[idx].birthDate = document.getElementById('s-birth').value;
                 users[idx].password = document.getElementById('s-pass').value;
