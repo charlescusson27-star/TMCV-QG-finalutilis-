@@ -64,6 +64,18 @@
         </div>
     </div>
 
+    <!-- Modale Procédure Installation App Mobile -->
+    <div id="app-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="w-full max-w-md dyn-card border rounded-3xl p-6 shadow-2xl flex flex-col space-y-4 relative">
+            <button onclick="toggleModal('app-modal', false)" class="absolute top-4 right-4 text-amber-200 hover:text-white text-lg font-bold"><i class="fa-solid fa-xmark"></i></button>
+            <h3 class="font-black text-base text-amber-400 flex items-center gap-2"><i class="fa-solid fa-mobile-screen"></i> Télécharger l'App & Procédure</h3>
+            <div id="app-procedure-content" class="text-xs text-amber-100 bg-stone-900 p-4 rounded-2xl border space-y-2 max-h-60 overflow-y-auto">
+                Chargement de la procédure...
+            </div>
+            <a id="app-download-link" href="#" download class="w-full py-3 dyn-btn text-white text-center font-bold rounded-xl block"><i class="fa-solid fa-download mr-1"></i> Télécharger le fichier de l'application</a>
+        </div>
+    </div>
+
     <!-- Modale Centre de Notifications -->
     <div id="notifications-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
         <div class="w-full max-w-lg dyn-card border rounded-3xl p-6 shadow-2xl flex flex-col space-y-4 max-h-[85vh]">
@@ -104,12 +116,6 @@
             db = firebase.firestore();
         } catch(e) { console.error(e); }
 
-        let deferredPrompt = null;
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-        });
-
         let cloudData = {
             users: [
                 { username: 'Charlesadmin', password: 'tln20', role: 'admin', status: 'active', mustChangePass: true, email: 'charlescusson27@gmail.com', avatarSkin: '#fca5a5', avatarAccessory: '👑', avatarHair: '🧢', pseudo: 'Charles (Admin)', realName: 'Charles Cusson', birthDate: '2009-03-26' }
@@ -127,11 +133,13 @@
             calendar_events: [],
             custom_pages: [],
             hidden_tabs: [],
-            orientation_models: [],
+            flashcard_decks: [],
             app_notifications: [],
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' },
             site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)', bgMedia: '', bgAudio: '', mode: 'dark' },
-            home_qr_image: ''
+            home_qr_image: '',
+            app_download_file: '',
+            app_install_procedure: '1. Téléchargez le fichier de l’application ci-dessus.\n2. Ouvrez les paramètres de votre téléphone (Android/iOS) et autorisez l’installation de sources inconnues si nécessaire.\n3. Installez l’application et profitez de LE QG directement sur votre écran d’accueil !'
         };
 
         const DB = {
@@ -152,12 +160,18 @@
             targetUser: null,
             adminSub: 'users',
             activeQuizId: null,
-            activeFcDeck: null,
-            playingFcIndex: 0,
+            activeDeckId: null,
+            cardIndex: 0,
+            showAnswerCard: false,
+            creatingDeck: false,
             formationSearch: '',
             formationTypeFilter: 'all',
             formationCityFilter: 'all',
-            editingDocIndex: null
+            editingDocIndex: null,
+            pomodoroTimer: null,
+            pomodoroSeconds: 25 * 60,
+            pomodoroRunning: false,
+            pomodoroMode: 'work'
         };
 
         async function init() {
@@ -173,14 +187,6 @@
                             await db.collection("leqg_data").doc(k).set({ value: cloudData[k] });
                         }
                     } else {
-                        let cpDoc = await db.collection("leqg_data").doc("custom_pages").get();
-                        if (cpDoc.exists) {
-                            let pages = cpDoc.data().value || [];
-                            pages = pages.filter(p => !p.title.toLowerCase().includes('qr') && !p.title.toLowerCase().includes('badge') && !p.title.toLowerCase().includes('toutou'));
-                            cloudData.custom_pages = pages;
-                            await db.collection("leqg_data").doc("custom_pages").set({ value: pages });
-                        }
-
                         const keys = Object.keys(cloudData);
                         for (let k of keys) {
                             let doc = await db.collection("leqg_data").doc(k).get();
@@ -229,10 +235,7 @@
 
             if ("Notification" in window && Notification.permission === "granted") {
                 try {
-                    new Notification(title, {
-                        body: message,
-                        icon: "https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&q=80&w=120"
-                    });
+                    new Notification(title, { body: message, icon: "https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&q=80&w=120" });
                 } catch(err) { console.error(err); }
             }
         }
@@ -242,16 +245,12 @@
             showToast("Notifications", "Le centre de notifications a été vidé.");
         }
 
-        async function installPWA() {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                let choiceResult = await deferredPrompt.userChoice;
-                if (choiceResult.outcome === 'accepted') { showToast("Application", "Installation lancée !"); }
-                deferredPrompt = null;
-                render();
-            } else {
-                alert("Pour installer l'application sur votre téléphone, ouvrez le menu de votre navigateur (les 3 petits points) et sélectionnez 'Ajouter à l'écran d'accueil'.");
-            }
+        function triggerAppModal() {
+            let fileUrl = DB.get('app_download_file') || '#';
+            let proc = DB.get('app_install_procedure') || 'Aucune procédure renseignée.';
+            document.getElementById('app-download-link').href = fileUrl;
+            document.getElementById('app-procedure-content').innerHTML = proc.replace(/\n/g, '<br>');
+            toggleModal('app-modal', true);
         }
 
         function applyTheme() {
@@ -261,36 +260,20 @@
             if (t.borderColor) document.documentElement.style.setProperty('--custom-border-color', t.borderColor);
             
             let body = document.getElementById('body-theme');
-            if (t.mode === 'light') {
-                body.className = "bg-stone-100 text-stone-900 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden";
-            } else {
-                body.className = "bg-stone-950 text-amber-50 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden";
-            }
+            body.className = t.mode === 'light' ? "bg-stone-100 text-stone-900 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden" : "bg-stone-950 text-amber-50 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden";
 
             let bgC = document.getElementById('custom-bg-container');
             if (bgC) {
                 if (t.bgMedia) {
-                    if (t.bgMedia.match(/\.(mp4|webm|ogg)$/i) || t.bgMedia.startsWith('data:video')) {
-                        bgC.innerHTML = `<video autoplay muted loop class="w-full h-full object-cover opacity-40"><source src="${t.bgMedia}"></video>`;
-                    } else {
-                        bgC.innerHTML = `<div class="w-full h-full bg-cover bg-center opacity-40" style="background-image: url('${t.bgMedia}')"></div>`;
-                    }
-                } else {
-                    bgC.innerHTML = '';
-                }
+                    bgC.innerHTML = t.bgMedia.match(/\.(mp4|webm|ogg)$/i) || t.bgMedia.startsWith('data:video') ? `<video autoplay muted loop class="w-full h-full object-cover opacity-40"><source src="${t.bgMedia}"></video>` : `<div class="w-full h-full bg-cover bg-center opacity-40" style="background-image: url('${t.bgMedia}')"></div>`;
+                } else { bgC.innerHTML = ''; }
             }
 
             let audioEl = document.getElementById('theme-audio');
             if (audioEl) {
                 if (t.bgAudio) {
-                    if (audioEl.src !== t.bgAudio) {
-                        audioEl.src = t.bgAudio;
-                        audioEl.play().catch(e => console.log("Audio autoplay bloqué"));
-                    }
-                } else {
-                    audioEl.pause();
-                    audioEl.src = '';
-                }
+                    if (audioEl.src !== t.bgAudio) { audioEl.src = t.bgAudio; audioEl.play().catch(e => console.log(e)); }
+                } else { audioEl.pause(); audioEl.src = ''; }
             }
 
             let decoContainer = document.getElementById('theme-decorations');
@@ -334,22 +317,13 @@
             document.getElementById('viewer-download-btn').href = url;
             document.getElementById('viewer-open-tab').href = url;
             let c = document.getElementById('viewer-content-container');
-            if (type && type.includes('pdf')) {
-                c.innerHTML = `<embed src="${url}" type="application/pdf" width="100%" height="100%" />`;
-            } else {
-                c.innerHTML = `<img src="${url}" class="max-h-full object-contain rounded-xl" />`;
-            }
+            c.innerHTML = type && type.includes('pdf') ? `<embed src="${url}" type="application/pdf" width="100%" height="100%" />` : `<img src="${url}" class="max-h-full object-contain rounded-xl" />`;
             toggleModal('file-viewer-modal', true);
         }
 
         function renderAvatarBadge(user) {
-            let skin = user.avatarSkin || '#fca5a5';
-            let acc = user.avatarAccessory || '👤';
-            let hair = user.avatarHair || '🧢';
-            return `<div class="relative w-8 h-8 rounded-full border border-amber-400 flex items-center justify-center text-xs overflow-hidden" style="background-color: ${skin}">
-                <span>${acc}</span>
-                <span class="absolute -top-1 right-0 text-[10px]">${hair}</span>
-            </div>`;
+            let skin = user.avatarSkin || '#fca5a5', acc = user.avatarAccessory || '👤', hair = user.avatarHair || '🧢';
+            return `<div class="relative w-8 h-8 rounded-full border border-amber-400 flex items-center justify-center text-xs overflow-hidden" style="background-color: ${skin}"><span>${acc}</span><span class="absolute -top-1 right-0 text-[10px]">${hair}</span></div>`;
         }
 
         function render() {
@@ -366,138 +340,60 @@
             let filtered = notifs.filter(n => n.targetRole === 'all' || (n.targetRole === 'admin' && (user.role === 'admin' || user.role === 'delegate')));
             let container = document.getElementById('notifications-list-container');
             let badge = document.getElementById('notif-badge-count');
-
             if (badge) {
                 badge.textContent = filtered.length;
                 badge.style.display = filtered.length > 0 ? 'inline-block' : 'none';
             }
-
             if (!container) return;
-            if (filtered.length === 0) {
-                container.innerHTML = `<p class="text-center text-amber-200/50 py-6 text-xs">Aucune notification pour le moment.</p>`;
-                return;
-            }
-
-            container.innerHTML = filtered.map(n => `
-                <div class="p-3 bg-stone-900 border border-amber-900/40 rounded-2xl flex items-start gap-3">
-                    <div class="text-amber-400 text-lg mt-0.5"><i class="fa-solid fa-bell"></i></div>
-                    <div class="flex-1 space-y-0.5">
-                        <div class="flex justify-between items-center">
-                            <h4 class="font-bold text-amber-300 text-xs">${n.title}</h4>
-                            <span class="text-[9px] text-amber-200/50">${n.time} - ${n.date}</span>
-                        </div>
-                        <p class="text-amber-100 text-[11px]">${n.message}</p>
-                    </div>
-                </div>
-            `).join('');
+            if (filtered.length === 0) { container.innerHTML = `<p class="text-center text-amber-200/50 py-6 text-xs">Aucune notification.</p>`; return; }
+            container.innerHTML = filtered.map(n => `<div class="p-3 bg-stone-900 border border-amber-900/40 rounded-2xl flex items-start gap-3"><div class="text-amber-400 text-lg mt-0.5"><i class="fa-solid fa-bell"></i></div><div class="flex-1 space-y-0.5"><div class="flex justify-between items-center"><h4 class="font-bold text-amber-300 text-xs">${n.title}</h4><span class="text-[9px] text-amber-200/50">${n.time} - ${n.date}</span></div><p class="text-amber-100 text-[11px]">${n.message}</p></div></div>`).join('');
         }
 
         function renderLogin() {
-            return `<div class="flex-1 flex items-center justify-center p-4">
-                <div class="w-full max-w-md dyn-card border rounded-3xl p-8 shadow-2xl space-y-6 text-center">
-                    <div class="p-3 bg-amber-500/10 text-amber-400 rounded-2xl text-3xl inline-block"><i class="fa-solid fa-chess-rook"></i></div>
-                    <h1 class="text-2xl font-black text-white">LE QG - Connexion</h1>
-                    <form onsubmit="handleLogin(event)" class="space-y-3 text-left">
-                        <input type="text" id="l-user" required placeholder="Identifiant..." class="w-full px-4 py-3 bg-stone-900 border rounded-2xl text-xs text-amber-100 focus:outline-none">
-                        <input type="password" id="l-pass" required placeholder="Mot de passe..." class="w-full px-4 py-3 bg-stone-900 border rounded-2xl text-xs text-amber-100 focus:outline-none">
-                        <button type="submit" class="w-full py-3 dyn-btn text-xs text-white font-bold rounded-2xl">Se connecter</button>
-                    </form>
-                </div>
-            </div>`;
+            return `<div class="flex-1 flex items-center justify-center p-4"><div class="w-full max-w-md dyn-card border rounded-3xl p-8 shadow-2xl space-y-6 text-center"><div class="p-3 bg-amber-500/10 text-amber-400 rounded-2xl text-3xl inline-block"><i class="fa-solid fa-chess-rook"></i></div><h1 class="text-2xl font-black text-white">LE QG - Connexion</h1><form onsubmit="handleLogin(event)" class="space-y-3 text-left"><input type="text" id="l-user" required placeholder="Identifiant..." class="w-full px-4 py-3 bg-stone-900 border rounded-2xl text-xs text-amber-100"><input type="password" id="l-pass" required placeholder="Mot de passe..." class="w-full px-4 py-3 bg-stone-900 border rounded-2xl text-xs text-amber-100"><button type="submit" class="w-full py-3 dyn-btn text-xs text-white font-bold rounded-2xl">Se connecter</button></form></div></div>`;
         }
 
         function renderSetup(user) {
             let isAdmin = user.role === 'admin';
-            return `<div class="flex-1 flex items-center justify-center p-4">
-                <div class="w-full max-w-md dyn-card border rounded-3xl p-8 shadow-2xl space-y-4 text-xs">
-                    <h1 class="text-base font-bold text-amber-400">Première connexion - Configuration obligatoire</h1>
-                    <form onsubmit="saveSetup(event)" class="space-y-3">
-                        ${isAdmin ? `
-                            <div>
-                                <label class="block font-bold text-amber-300">Nouvel Identifiant Administrateur *</label>
-                                <input type="text" id="s-username" value="${user.username}" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1">
-                            </div>
-                        ` : ''}
-                        <div>
-                            <label class="block font-bold text-amber-300">Nom & Prénom réels *</label>
-                            <input type="text" id="s-lastname" value="${user.realName || ''}" required placeholder="Ex: Jean Dupont" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1">
-                        </div>
-                        <div>
-                            <label class="block font-bold text-amber-300">Date de naissance *</label>
-                            <input type="date" id="s-birth" value="${user.birthDate || ''}" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1">
-                        </div>
-                        <div>
-                            <label class="block font-bold text-amber-300">Nouveau Mot de passe *</label>
-                            <input type="password" id="s-pass" required placeholder="Nouveau mot de passe" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1">
-                        </div>
-                        <div>
-                            <label class="block font-bold text-amber-300">Pseudo de messagerie (Facultatif)</label>
-                            <input type="text" id="s-pseudo" value="${user.pseudo || ''}" placeholder="Ex: 🚀 SuperÉlève" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1">
-                        </div>
-                        <div>
-                            <label class="block font-bold text-amber-300">Adresse E-mail (Facultatif)</label>
-                            <input type="email" id="s-email" value="${user.email || ''}" placeholder="nom@exemple.com" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1">
-                        </div>
-                        <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl mt-2">Valider et Entrer sur LE QG</button>
-                    </form>
-                </div>
-            </div>`;
+            return `<div class="flex-1 flex items-center justify-center p-4"><div class="w-full max-w-md dyn-card border rounded-3xl p-8 shadow-2xl space-y-4 text-xs"><h1 class="text-base font-bold text-amber-400">Configuration obligatoire</h1><form onsubmit="saveSetup(event)" class="space-y-3">${isAdmin ? `<div><label class="block font-bold text-amber-300">Nouvel Identifiant Admin *</label><input type="text" id="s-username" value="${user.username}" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div>` : ''}<div><label class="block font-bold text-amber-300">Nom & Prénom réels *</label><input type="text" id="s-lastname" value="${user.realName || ''}" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div><div><label class="block font-bold text-amber-300">Date de naissance *</label><input type="date" id="s-birth" value="${user.birthDate || ''}" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div><div><label class="block font-bold text-amber-300">Nouveau Mot de passe *</label><input type="password" id="s-pass" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div><div><label class="block font-bold text-amber-300">Pseudo de messagerie</label><input type="text" id="s-pseudo" value="${user.pseudo || ''}" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div><button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl mt-2">Valider</button></form></div></div>`;
         }
 
         function renderDashboard(user) {
             let canAccessAdmin = user.role === 'admin' || user.role === 'delegate';
             let hidden = DB.get('hidden_tabs') || [];
             let customPages = (DB.get('custom_pages') || []).filter(p => !p.title.toLowerCase().includes('qr') && !p.title.toLowerCase().includes('badge') && !p.title.toLowerCase().includes('toutou'));
-
             function isVisible(tabId) { return !hidden.includes(tabId); }
 
-            return `
-                <header class="bg-stone-950/80 border-b border-amber-900/40 px-4 py-3 flex justify-between items-center backdrop-blur-md">
-                    <div class="flex items-center gap-3">
-                        <button onclick="state.sidebar=!state.sidebar;render()" class="p-2 bg-stone-900 text-amber-100 rounded-xl"><i class="fa-solid fa-bars"></i></button>
-                        <div class="flex items-center gap-2">
-                            ${renderAvatarBadge(user)}
-                            <div>
-                                <div class="font-black text-amber-400 text-xs">${user.pseudo || user.username}</div>
-                                <div class="text-[9px] text-amber-200/60">${user.realName || user.username}</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <button onclick="toggleModal('notifications-modal', true)" class="relative px-3 py-1.5 bg-stone-900 border border-amber-500/40 text-amber-300 text-xs rounded-xl font-bold flex items-center gap-1.5">
-                            <i class="fa-solid fa-bell"></i> Notifications
-                            <span id="notif-badge-count" class="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold" style="display:none">0</span>
-                        </button>
-                        <button onclick="installPWA()" class="px-3 py-1.5 dyn-btn text-white text-xs rounded-xl font-bold flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen"></i> App Mobile</button>
-                        <button onclick="logout()" class="px-3 py-1.5 bg-stone-900 text-amber-200 text-xs rounded-xl border">Déconnexion</button>
-                    </div>
-                </header>
-                <div class="flex-1 flex overflow-hidden relative">
-                    <aside class="fixed inset-y-0 left-0 z-30 w-64 bg-stone-950/95 border-r transform ${state.sidebar ? 'translate-x-0' : '-translate-x-full'} transition-transform flex flex-col p-4 pt-16 space-y-1 text-xs overflow-y-auto">
-                        ${isVisible('home') ? sbBtn('home', 'Accueil & QR Code', 'house') : ''}
-                        ${isVisible('profile') ? sbBtn('profile', 'Mon Profil & Avatar', 'user-astronaut') : ''}
-                        ${isVisible('formations') ? sbBtn('formations', 'Formations Post-Bac', 'graduation-cap') : ''}
-                        ${isVisible('calendar') ? sbBtn('calendar', 'Planning & Agenda', 'calendar-days') : ''}
-                        ${isVisible('tickets') ? sbBtn('tickets', 'Mails & Support Tickets', 'envelope') : ''}
-                        ${isVisible('appreciations') ? sbBtn('appreciations', 'Mes Appréciations', 'award') : ''}
-                        ${isVisible('chat') ? sbBtn('chat', 'Messagerie & Canal', 'comments') : ''}
-                        ${isVisible('quizzes') ? sbBtn('quizzes', 'Quiz & Ma Progression', 'brain') : ''}
-                        ${isVisible('polls') ? sbBtn('polls', 'Sondages Éclairs', 'square-poll-vertical') : ''}
-                        ${isVisible('revisions') ? sbBtn('revisions', 'Fiches de Révision', 'book-open') : ''}
-                        ${isVisible('exams') ? sbBtn('exams', 'Sujets & Exercices', 'file-pdf') : ''}
-                        ${isVisible('documents') ? sbBtn('documents', 'Mon Traitement de Texte', 'folder-open') : ''}
-                        ${isVisible('flashcards') ? sbBtn('flashcards', 'Créateur Flashcards', 'clone') : ''}
-                        ${isVisible('orientation') ? sbBtn('orientation', 'CV & Lettres Type', 'file-lines') : ''}
-                        ${isVisible('simulator') ? sbBtn('simulator', 'Simulateur de Moyenne', 'calculator') : ''}
-                        ${isVisible('mood') ? sbBtn('mood', 'Mur des Humeurs', 'face-smile') : ''}
-                        ${isVisible('pomodoro') ? sbBtn('pomodoro', 'Mode Focus / Pomodoro', 'stopwatch') : ''}
-                        ${isVisible('goldbook') ? sbBtn('goldbook', 'Livre d\'Or', 'book-bookmark') : ''}
-                        ${isVisible('ideas') ? sbBtn('ideas', 'Boîte à Idées', 'lightbulb') : ''}
-                        ${customPages.map(cp => isVisible('cp_' + cp.id) ? sbBtn('cp_' + cp.id, cp.title, 'star') : '').join('')}
-                        ${canAccessAdmin ? sbBtn('admin', 'Espace Délégué / Admin', 'user-gear', 'text-amber-400 bg-amber-500/10') : ''}
-                    </aside>
-                    <main class="flex-1 overflow-y-auto p-4 md:p-6">${renderContent(user)}</main>
-                </div>`;
+            return `<header class="bg-stone-950/80 border-b border-amber-900/40 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+                <div class="flex items-center gap-3"><button onclick="state.sidebar=!state.sidebar;render()" class="p-2 bg-stone-900 text-amber-100 rounded-xl"><i class="fa-solid fa-bars"></i></button><div class="flex items-center gap-2">${renderAvatarBadge(user)}<div><div class="font-black text-amber-400 text-xs">${user.pseudo || user.username}</div><div class="text-[9px] text-amber-200/60">${user.realName || user.username}</div></div></div></div>
+                <div class="flex items-center gap-2"><button onclick="toggleModal('notifications-modal', true)" class="relative px-3 py-1.5 bg-stone-900 border border-amber-500/40 text-amber-300 text-xs rounded-xl font-bold flex items-center gap-1.5"><i class="fa-solid fa-bell"></i> Notifications<span id="notif-badge-count" class="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold" style="display:none">0</span></button><button onclick="triggerAppModal()" class="px-3 py-1.5 dyn-btn text-white text-xs rounded-xl font-bold flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen"></i> App Mobile</button><button onclick="logout()" class="px-3 py-1.5 bg-stone-900 text-amber-200 text-xs rounded-xl border">Déconnexion</button></div>
+            </header>
+            <div class="flex-1 flex overflow-hidden relative">
+                <aside class="fixed inset-y-0 left-0 z-30 w-64 bg-stone-950/95 border-r transform ${state.sidebar ? 'translate-x-0' : '-translate-x-full'} transition-transform flex flex-col p-4 pt-16 space-y-1 text-xs overflow-y-auto">
+                    ${isVisible('home') ? sbBtn('home', 'Accueil & QR Code', 'house') : ''}
+                    ${isVisible('profile') ? sbBtn('profile', 'Mon Profil & Avatar', 'user-astronaut') : ''}
+                    ${isVisible('formations') ? sbBtn('formations', 'Formations Post-Bac', 'graduation-cap') : ''}
+                    ${isVisible('calendar') ? sbBtn('calendar', 'Planning & Agenda', 'calendar-days') : ''}
+                    ${isVisible('tickets') ? sbBtn('tickets', 'Mails & Support Tickets', 'envelope') : ''}
+                    ${isVisible('appreciations') ? sbBtn('appreciations', 'Mes Appréciations', 'award') : ''}
+                    ${isVisible('chat') ? sbBtn('chat', 'Messagerie & Canal', 'comments') : ''}
+                    ${isVisible('quizzes') ? sbBtn('quizzes', 'Quiz & Ma Progression', 'brain') : ''}
+                    ${isVisible('polls') ? sbBtn('polls', 'Sondages Éclairs', 'square-poll-vertical') : ''}
+                    ${isVisible('revisions') ? sbBtn('revisions', 'Fiches de Révision', 'book-open') : ''}
+                    ${isVisible('exams') ? sbBtn('exams', 'Sujets & Exercices', 'file-pdf') : ''}
+                    ${isVisible('documents') ? sbBtn('documents', 'Mon Traitement de Texte', 'folder-open') : ''}
+                    ${isVisible('flashcards') ? sbBtn('flashcards', 'Créateur Flashcards', 'clone') : ''}
+                    ${isVisible('orientation') ? sbBtn('orientation', 'CV & Lettres Type', 'file-lines') : ''}
+                    ${isVisible('simulator') ? sbBtn('simulator', 'Simulateur de Moyenne', 'calculator') : ''}
+                    ${isVisible('mood') ? sbBtn('mood', 'Mur des Humeurs', 'face-smile') : ''}
+                    ${isVisible('pomodoro') ? sbBtn('pomodoro', 'Mode Focus / Pomodoro', 'stopwatch') : ''}
+                    ${isVisible('goldbook') ? sbBtn('goldbook', 'Livre d\'Or', 'book-bookmark') : ''}
+                    ${isVisible('ideas') ? sbBtn('ideas', 'Boîte à Idées', 'lightbulb') : ''}
+                    ${customPages.map(cp => isVisible('cp_' + cp.id) ? sbBtn('cp_' + cp.id, cp.title, 'star') : '').join('')}
+                    ${canAccessAdmin ? sbBtn('admin', 'Espace Délégué / Admin', 'user-gear', 'text-amber-400 bg-amber-500/10') : ''}
+                </aside>
+                <main class="flex-1 overflow-y-auto p-4 md:p-6">${renderContent(user)}</main>
+            </div>`;
         }
 
         function sbBtn(id, label, icon, extra = '') {
@@ -524,7 +420,7 @@
             if (state.tab === 'mood') return renderMoodTab(user);
             if (state.tab === 'pomodoro') return renderPomodoroTab();
             if (state.tab === 'goldbook') return renderGoldBookTab(user);
-            if (state.tab === 'ideas') return renderIdeasPage();
+            if (state.tab === 'ideas') return renderIdeasPage(user);
             if (state.tab.startsWith('cp_')) return renderCustomPage(state.tab.replace('cp_', ''));
             if (state.tab === 'admin' && (user.role === 'admin' || user.role === 'delegate')) return renderAdmin();
             return '';
@@ -533,86 +429,17 @@
         function renderHome() {
             let qr = DB.get('home_qr_image') || '';
             let countdown = DB.get('countdown') || { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' };
-            let diffTime = new Date(countdown.date) - new Date();
-            let diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-
-            return `<div class="max-w-3xl mx-auto space-y-6 text-center">
-                <div class="dyn-card border p-8 space-y-3 rounded-3xl shadow-2xl">
-                    <h2 class="text-3xl font-black text-amber-400">⏳ ${countdown.title}</h2>
-                    <div class="text-4xl font-extrabold text-white mt-2">${diffDays >= 0 ? diffDays + ' jours restants !' : 'Événement passé'}</div>
-                </div>
-                <div class="dyn-card border p-8 space-y-3 rounded-3xl">
-                    <h2 class="text-2xl font-black text-white">Bienvenue sur LE QG</h2>
-                    <p class="text-xs text-amber-200/75">Plateforme collaborative de classe 100% synchronisée.</p>
-                </div>
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h3 class="font-bold text-amber-400 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>QR Code d'accès mobile</h3>
-                    ${qr ? `<div class="bg-white p-3 inline-block rounded-2xl shadow-xl"><img src="${qr}" width="160" height="160"/></div>` : `<p class="text-xs text-amber-200/50">Aucun QR code configuré par le délégué.</p>`}
-                </div>
-            </div>`;
+            let diffDays = Math.ceil((new Date(countdown.date) - new Date()) / (1000 * 60 * 60 * 24));
+            return `<div class="max-w-3xl mx-auto space-y-6 text-center"><div class="dyn-card border p-8 space-y-3 rounded-3xl shadow-2xl"><h2 class="text-3xl font-black text-amber-400">⏳ ${countdown.title}</h2><div class="text-4xl font-extrabold text-white mt-2">${diffDays >= 0 ? diffDays + ' jours restants !' : 'Événement passé'}</div></div><div class="dyn-card border p-8 space-y-3 rounded-3xl"><h2 class="text-2xl font-black text-white">Bienvenue sur LE QG</h2><p class="text-xs text-amber-200/75">Plateforme collaborative de classe 100% synchronisée.</p></div><div class="dyn-card border p-6 rounded-3xl space-y-3"><h3 class="font-bold text-amber-400 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>QR Code d'accès mobile</h3>${qr ? `<div class="bg-white p-3 inline-block rounded-2xl shadow-xl"><img src="${qr}" width="160" height="160"/></div>` : `<p class="text-xs text-amber-200/50">Aucun QR code configuré.</p>`}</div></div>`;
         }
 
         function renderProfileTab(user) {
-            return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-6 text-xs">
-                <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-user-astronaut mr-2"></i>Mon Profil & Studio Avatar</h2>
-                
-                <div class="flex items-center gap-6 p-4 bg-stone-900 rounded-2xl border">
-                    <div class="relative w-20 h-20 rounded-full border-2 border-amber-400 flex items-center justify-center text-3xl overflow-hidden" style="background-color: ${user.avatarSkin || '#fca5a5'}">
-                        <span>${user.avatarAccessory || '👤'}</span>
-                        <span class="absolute top-1 right-2 text-xl">${user.avatarHair || '🧢'}</span>
-                    </div>
-                    <div class="space-y-1">
-                        <div class="font-bold text-lg text-amber-300">${user.pseudo || user.username}</div>
-                        <div class="text-amber-200/70">${user.realName || 'Nom non configuré'}</div>
-                        <div class="text-[10px] text-amber-400/80">Rôle : ${user.role}</div>
-                    </div>
-                </div>
-
-                <form onsubmit="saveProfileAvatar(event, '${user.username}')" class="space-y-4">
-                    <h3 class="font-bold text-amber-300 border-b pb-1">Personnaliser l'Avatar & Infos</h3>
-                    <div class="space-y-2">
-                        <label class="block font-bold">Pseudo de messagerie :</label>
-                        <input type="text" id="av-pseudo" value="${user.pseudo || ''}" class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                    </div>
-                    <div class="space-y-2">
-                        <label class="block font-bold">Nom et Prénom réels :</label>
-                        <input type="text" id="av-realname" value="${user.realName || ''}" required class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                    </div>
-                    <div class="grid grid-cols-3 gap-3">
-                        <div>
-                            <label class="block font-bold mb-1">Teint de peau :</label>
-                            <input type="color" id="av-skin" value="${user.avatarSkin || '#fca5a5'}" class="w-full h-10 p-1 bg-stone-900 border rounded-xl">
-                        </div>
-                        <div>
-                            <label class="block font-bold mb-1">Accessoire :</label>
-                            <select id="av-acc" class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                                <option value="👑" ${user.avatarAccessory==='👑'?'selected':''}>👑 Couronne</option>
-                                <option value="🕶️" ${user.avatarAccessory==='🕶️'?'selected':''}>🕶️ Lunettes</option>
-                                <option value="🎧" ${user.avatarAccessory==='🎧'?'selected':''}>🎧 Casque</option>
-                                <option value="🥸" ${user.avatarAccessory==='🥸'?'selected':''}>🥸 Moustache</option>
-                                <option value="👤" ${user.avatarAccessory==='👤'?'selected':''}>👤 Normal</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block font-bold mb-1">Coiffure / Style :</label>
-                            <select id="av-hair" class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                                <option value="🧢" ${user.avatarHair==='🧢'?'selected':''}>🧢 Casquette</option>
-                                <option value="🎩" ${user.avatarHair==='🎩'?'selected':''}>🎩 Chapeau</option>
-                                <option value="🎓" ${user.avatarHair==='🎓'?'selected':''}>🎓 Diplôme</option>
-                                <option value="🔥" ${user.avatarHair==='🔥'?'selected':''}>🔥 Feu</option>
-                                <option value="✨" ${user.avatarHair==='✨'?'selected':''}>✨ Étoiles</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Enregistrer mon profil</button>
-                </form>
-            </div>`;
+            return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-6 text-xs"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-user-astronaut mr-2"></i>Mon Profil & Studio Avatar</h2><div class="flex items-center gap-6 p-4 bg-stone-900 rounded-2xl border"><div class="relative w-20 h-20 rounded-full border-2 border-amber-400 flex items-center justify-center text-3xl overflow-hidden" style="background-color: ${user.avatarSkin || '#fca5a5'}"><span>${user.avatarAccessory || '👤'}</span><span class="absolute top-1 right-2 text-xl">${user.avatarHair || '🧢'}</span></div><div class="space-y-1"><div class="font-bold text-lg text-amber-300">${user.pseudo || user.username}</div><div class="text-amber-200/70">${user.realName || 'Nom non configuré'}</div><div class="text-[10px] text-amber-400/80">Rôle : ${user.role}</div></div></div><form onsubmit="saveProfileAvatar(event, '${user.username}')" class="space-y-4"><h3 class="font-bold text-amber-300 border-b pb-1">Personnaliser l'Avatar & Infos</h3><div class="space-y-2"><label class="block font-bold">Pseudo de messagerie :</label><input type="text" id="av-pseudo" value="${user.pseudo || ''}" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white"></div><div class="space-y-2"><label class="block font-bold">Nom et Prénom réels :</label><input type="text" id="av-realname" value="${user.realName || ''}" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white"></div><div class="grid grid-cols-3 gap-3"><div><label class="block font-bold mb-1">Teint :</label><input type="color" id="av-skin" value="${user.avatarSkin || '#fca5a5'}" class="w-full h-10 p-1 bg-stone-900 border rounded-xl"></div><div><label class="block font-bold mb-1">Accessoire :</label><select id="av-acc" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white"><option value="👑" ${user.avatarAccessory==='👑'?'selected':''}>👑</option><option value="🕶️" ${user.avatarAccessory==='🕶️'?'selected':''}>🕶️</option><option value="🎧" ${user.avatarAccessory==='🎧'?'selected':''}>🎧</option><option value="👤" ${user.avatarAccessory==='👤'?'selected':''}>👤</option></select></div><div><label class="block font-bold mb-1">Coiffure :</label><select id="av-hair" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white"><option value="🧢" ${user.avatarHair==='🧢'?'selected':''}>🧢</option><option value="🎩" ${user.avatarHair==='🎩'?'selected':''}>🎩</option><option value="🎓" ${user.avatarHair==='🎓'?'selected':''}>🎓</option></select></div></div><button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Enregistrer mon profil</button></form></div>`;
         }
 
         async function saveProfileAvatar(event, username) {
             event.preventDefault();
-            let users = DB.get('users') || [];
-            let idx = users.findIndex(u => u.username === username);
+            let users = DB.get('users') || [], idx = users.findIndex(u => u.username === username);
             if (idx !== -1) {
                 users[idx].pseudo = document.getElementById('av-pseudo').value;
                 users[idx].realName = document.getElementById('av-realname').value;
@@ -621,131 +448,35 @@
                 users[idx].avatarHair = document.getElementById('av-hair').value;
                 await DB.set('users', users);
                 sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
-                showToast("Profil mis à jour !", "Vos modifications ont été enregistrées.");
+                showToast("Profil mis à jour !", "");
             }
         }
 
         function renderCalendarTab() {
             let events = DB.get('calendar_events') || [];
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-calendar-days mr-2"></i>Agenda & Planning Partagé</h2></div>
-                <div class="space-y-2">
-                    ${events.length === 0 ? `<div class="dyn-card border p-6 text-center text-amber-200/50 rounded-2xl">Aucun événement planifié.</div>` : ''}
-                    ${events.map(ev => `
-                        <div class="dyn-card border p-4 rounded-2xl flex justify-between items-center">
-                            <div><h4 class="font-bold text-amber-200 text-sm">${ev.title}</h4><p class="text-[10px] text-amber-200/60">${ev.date} - ${ev.desc}</p></div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">Agenda & Planning</h2></div><div class="space-y-2">${events.length === 0 ? '<div class="dyn-card border p-6 text-center text-amber-200/50 rounded-2xl">Aucun événement.</div>' : ''}${events.map(ev => `<div class="dyn-card border p-4 rounded-2xl"><div><h4 class="font-bold text-amber-200 text-sm">${ev.title}</h4><p class="text-[10px] text-amber-200/60">${ev.date} - ${ev.desc}</p></div></div>`).join('')}</div></div>`;
         }
 
         function renderFormationsTab() {
             let list = DB.get('formations') || [];
             let cities = [...new Set(list.map(f => f.city).filter(Boolean))];
-            let filtered = list.filter(f => {
-                let matchSearch = (f.title + ' ' + f.desc + ' ' + f.establishment).toLowerCase().includes(state.formationSearch.toLowerCase());
-                let matchType = state.formationTypeFilter === 'all' || f.type === state.formationTypeFilter;
-                let matchCity = state.formationCityFilter === 'all' || f.city === state.formationCityFilter;
-                return matchSearch && matchType && matchCity;
-            });
-
-            return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-graduation-cap mr-2"></i>Formations Post-Bac</h2>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2 pt-2">
-                        <input type="text" placeholder="Rechercher..." value="${state.formationSearch}" oninput="state.formationSearch=this.value;render()" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                        <select onchange="state.formationTypeFilter=this.value;render()" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            <option value="all">Tous les rythmes</option>
-                            <option value="Initial" ${state.formationTypeFilter==='Initial'?'selected':''}>Initial</option>
-                            <option value="Alternance" ${state.formationTypeFilter==='Alternance'?'selected':''}>Alternance</option>
-                            <option value="Apprentissage" ${state.formationTypeFilter==='Apprentissage'?'selected':''}>Apprentissage</option>
-                        </select>
-                        <select onchange="state.formationCityFilter=this.value;render()" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            <option value="all">Toutes les villes</option>
-                            ${cities.map(c => `<option value="${c}" ${state.formationCityFilter===c?'selected':''}>${c}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-                <div class="space-y-3">
-                    ${filtered.length === 0 ? `<div class="dyn-card border p-6 text-center text-amber-200/50 rounded-2xl">Aucune formation trouvée.</div>` : ''}
-                    ${filtered.map(f => `
-                        <div class="dyn-card border p-5 rounded-2xl space-y-2">
-                            <div class="flex justify-between items-start">
-                                <div><h3 class="font-bold text-amber-300 text-sm">${f.title}</h3><p class="text-[10px] text-amber-200/70">${f.establishment} - ${f.city}</p></div>
-                                <span class="px-2.5 py-1 bg-amber-500/10 border text-amber-400 rounded-lg text-[10px] font-bold">${f.type}</span>
-                            </div>
-                            <p class="text-amber-100 text-xs">${f.desc}</p>
-                            ${f.link ? `<a href="${f.link}" target="_blank" class="inline-block mt-2 px-3 py-1.5 dyn-btn text-white font-bold rounded-xl text-[10px]"><i class="fa-solid fa-circle-info mr-1"></i> Plus d'infos</a>` : ''}
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
+            let filtered = list.filter(f => (f.title + ' ' + f.desc + ' ' + f.establishment).toLowerCase().includes(state.formationSearch.toLowerCase()) && (state.formationTypeFilter === 'all' || f.type === state.formationTypeFilter) && (state.formationCityFilter === 'all' || f.city === state.formationCityFilter));
+            return `<div class="max-w-4xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl space-y-3"><h2 class="text-xl font-black text-amber-400">Formations Post-Bac</h2><div class="grid grid-cols-1 md:grid-cols-3 gap-2"><input type="text" placeholder="Rechercher..." value="${state.formationSearch}" oninput="state.formationSearch=this.value;render()" class="p-2.5 bg-stone-900 border rounded-xl text-white"><select onchange="state.formationTypeFilter=this.value;render()" class="p-2.5 bg-stone-900 border rounded-xl text-white"><option value="all">Tous les rythmes</option><option value="Initial">Initial</option><option value="Alternance">Alternance</option><option value="Apprentissage">Apprentissage</option></select><select onchange="state.formationCityFilter=this.value;render()" class="p-2.5 bg-stone-900 border rounded-xl text-white"><option value="all">Toutes les villes</option>${cities.map(c => `<option value="${c}">${c}</option>`).join('')}</select></div></div><div class="space-y-3">${filtered.length === 0 ? '<div class="dyn-card border p-6 text-center text-amber-200/50 rounded-2xl">Aucune formation.</div>' : ''}${filtered.map(f => `<div class="dyn-card border p-5 rounded-2xl space-y-2"><div class="flex justify-between items-start"><div><h3 class="font-bold text-amber-300 text-sm">${f.title}</h3><p class="text-[10px] text-amber-200/70">${f.establishment} - ${f.city}</p></div><span class="px-2.5 py-1 bg-amber-500/15 text-amber-400 rounded-lg text-[10px] font-bold">${f.type}</span></div><p class="text-amber-100 text-xs">${f.desc}</p>${f.link ? `<a href="${f.link}" target="_blank" class="inline-block mt-2 px-3 py-1.5 dyn-btn text-white font-bold rounded-xl text-[10px]">Plus d'infos</a>` : ''}</div>`).join('')}</div></div>`;
         }
 
         function renderTicketsTab(user) {
             let users = DB.get('users') || [], tickets = DB.get('tickets') || [];
             let myTickets = tickets.filter(t => t.sender === user.username || t.recipient === user.username || user.role === 'admin' || user.role === 'delegate');
-            
-            return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-envelope mr-2"></i>Espace Mails & Support Tickets</h2>
-                    <form onsubmit="sendNewTicket(event)" class="p-4 bg-stone-900/60 rounded-2xl border space-y-3">
-                        <h3 class="font-bold text-amber-300">Nouveau Mail / Ticket</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <select id="tk-recipient" required class="p-2.5 bg-stone-950 border rounded-xl text-amber-100">
-                                <option value="">Destinataire...</option>
-                                ${users.filter(u => u.username !== user.username).map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.role})</option>`).join('')}
-                            </select>
-                            <input type="text" value="[LE QG] Objet du message" readonly class="p-2.5 bg-stone-950/50 border text-amber-200/50 rounded-xl cursor-not-allowed">
-                        </div>
-                        <input type="text" id="tk-subject-extra" required placeholder="Sujet précis..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100">
-                        <textarea id="tk-body" required placeholder="Votre message..." class="w-full p-2.5 bg-stone-950 border rounded-xl h-20 resize-none"></textarea>
-                        <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Envoyer le mail & Créer Ticket</button>
-                    </form>
-                </div>
-                <div class="space-y-3">
-                    <div class="flex justify-between items-center"><h3 class="font-bold text-amber-300 text-sm">Tous mes Mails & Tickets (${myTickets.length})</h3></div>
-                    ${myTickets.map(t => `
-                        <div class="dyn-card border p-5 rounded-2xl space-y-3">
-                            <div class="flex justify-between items-center flex-wrap gap-2 border-b pb-2">
-                                <div><span class="font-mono text-amber-400 font-bold">${t.ticketId}</span> - <span class="font-bold text-white">${t.subject}</span><p class="text-[10px] text-amber-200/60">De ${t.sender} vers ${t.recipient} (${t.date})</p></div>
-                                <div class="flex items-center gap-2">
-                                    <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-500/20 text-amber-300">${t.status}</span>
-                                    ${user.role === 'admin' || user.role === 'delegate' || t.sender === user.username ? `
-                                        <select onchange="updateTicketStatus('${t.ticketId}', this.value)" class="p-1 bg-stone-900 border rounded text-[10px]">
-                                            <option value="Ouvert" ${t.status==='Ouvert'?'selected':''}>Ouvert</option>
-                                            <option value="En attente" ${t.status==='En attente'?'selected':''}>En attente</option>
-                                            <option value="Clos" ${t.status==='Clos'?'selected':''}>Clos</option>
-                                        </select>
-                                    ` : ''}
-                                </div>
-                            </div>
-                            <div class="space-y-2 max-h-40 overflow-y-auto p-2 bg-stone-900/40 rounded-xl">
-                                ${t.replies.map(r => `<div class="p-2 bg-stone-950 rounded-lg"><div class="flex justify-between text-[10px] text-amber-400 font-bold"><span>${r.author}</span><span>${r.date}</span></div><p class="text-amber-100 text-xs mt-1">${r.text}</p></div>`).join('')}
-                            </div>
-                            ${t.status !== 'Clos' ? `
-                                <form onsubmit="replyTicket(event, '${t.ticketId}')" class="flex gap-2"><input type="text" id="reply_${t.ticketId}" required placeholder="Répondre..." class="flex-1 p-2 bg-stone-900 border rounded-xl text-amber-100"><button type="submit" class="px-3 py-1.5 dyn-btn text-white font-bold rounded-xl">Répondre</button></form>
-                            ` : `<p class="text-stone-500 italic text-[10px]">Ce ticket est clos.</p>`}
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
+            return `<div class="max-w-4xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl space-y-4"><h2 class="text-xl font-black text-amber-400">Mails & Support Tickets</h2><form onsubmit="sendNewTicket(event)" class="p-4 bg-stone-900/60 rounded-2xl border space-y-3"><select id="tk-recipient" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-white"><option value="">Destinataire...</option>${users.filter(u => u.username !== user.username).map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.role})</option>`).join('')}</select><input type="text" id="tk-subject-extra" required placeholder="Sujet précis..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white"><textarea id="tk-body" required placeholder="Message..." class="w-full p-2.5 bg-stone-950 border rounded-xl h-20 resize-none text-white"></textarea><button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Envoyer</button></form></div><div class="space-y-3">${myTickets.map(t => `<div class="dyn-card border p-5 rounded-2xl space-y-3"><div class="flex justify-between items-center border-b pb-2"><div><span class="font-mono text-amber-400">${t.ticketId}</span> - <span class="font-bold text-white">${t.subject}</span></div><span class="px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 font-bold">${t.status}</span></div><div class="space-y-1 max-h-32 overflow-y-auto">${t.replies.map(r => `<div class="p-2 bg-stone-950 rounded"><div class="text-[10px] text-amber-400 font-bold">${r.author} (${r.date})</div><p class="text-amber-100">${r.text}</p></div>`).join('')}</div><form onsubmit="replyTicket(event, '${t.ticketId}')" class="flex gap-2"><input type="text" id="reply_${t.ticketId}" required placeholder="Répondre..." class="flex-1 p-2 bg-stone-900 border rounded-xl text-white"><button type="submit" class="px-3 py-1 dyn-btn text-white rounded-xl">Envoyer</button></form></div>`).join('')}</div></div>`;
         }
 
         async function sendNewTicket(e) {
             e.preventDefault();
             let user = getCurrentUser();
-            let ticketId = '#TKT-' + Math.floor(10000 + Math.random() * 90000);
             let tickets = DB.get('tickets') || [];
-            tickets.push({
-                ticketId, sender: user.username, recipient: document.getElementById('tk-recipient').value,
-                subject: `[LE QG] ${document.getElementById('tk-subject-extra').value}`,
-                status: 'Ouvert', date: new Date().toLocaleString(),
-                replies: [{ author: user.pseudo || user.username, text: document.getElementById('tk-body').value, date: new Date().toLocaleString() }]
-            });
+            tickets.push({ ticketId: '#TKT-' + Math.floor(10000 + Math.random() * 90000), sender: user.username, recipient: document.getElementById('tk-recipient').value, subject: document.getElementById('tk-subject-extra').value, status: 'Ouvert', date: new Date().toLocaleString(), replies: [{ author: user.pseudo || user.username, text: document.getElementById('tk-body').value, date: new Date().toLocaleString() }] });
             await DB.set('tickets', tickets);
-            showToast("Nouveau Ticket !", `Mail envoyé sous le ticket ${ticketId}`);
+            showToast("Mail envoyé", "");
         }
 
         async function replyTicket(e, ticketId) {
@@ -754,22 +485,13 @@
             if (idx !== -1) {
                 tickets[idx].replies.push({ author: user.pseudo || user.username, text: document.getElementById(`reply_${ticketId}`).value, date: new Date().toLocaleString() });
                 await DB.set('tickets', tickets);
-                showToast("Réponse envoyée", `Ticket ${ticketId} mis à jour.`);
-            }
-        }
-
-        async function updateTicketStatus(ticketId, newStatus) {
-            let tickets = DB.get('tickets') || [], idx = tickets.findIndex(t => t.ticketId === ticketId);
-            if (idx !== -1) {
-                tickets[idx].status = newStatus;
-                await DB.set('tickets', tickets);
-                showToast("Statut mis à jour", `Ticket ${ticketId} -> ${newStatus}`);
+                render();
             }
         }
 
         function renderUserAppreciations(user) {
             let all = DB.get('appreciations') || {}, myApp = all[user.username] || { t1: '', t2: '', t3: '', published: false };
-            if (!myApp.published) return `<div class="max-w-2xl mx-auto dyn-card border p-8 text-center rounded-3xl"><i class="fa-solid fa-lock text-4xl text-amber-400"></i><h2 class="text-xl font-bold text-white">Appréciations</h2><p class="text-xs text-amber-200/70 mt-2">Non publiées par l'administration.</p></div>`;
+            if (!myApp.published) return `<div class="max-w-2xl mx-auto dyn-card border p-8 text-center rounded-3xl"><i class="fa-solid fa-lock text-4xl text-amber-400"></i><h2 class="text-xl font-bold text-white">Appréciations</h2><p class="text-xs text-amber-200/70 mt-2">Non publiées.</p></div>`;
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">Mes Appréciations</h2></div><div class="grid grid-cols-1 md:grid-cols-3 gap-3"><div class="dyn-card border p-4 rounded-2xl"><h4 class="font-bold text-amber-300">T1</h4><p class="mt-2 text-amber-100">${myApp.t1||'Aucune'}</p></div><div class="dyn-card border p-4 rounded-2xl"><h4 class="font-bold text-amber-300">T2</h4><p class="mt-2 text-amber-100">${myApp.t2||'Aucune'}</p></div><div class="dyn-card border p-4 rounded-2xl"><h4 class="font-bold text-amber-300">T3</h4><p class="mt-2 text-amber-100">${myApp.t3||'Aucune'}</p></div></div></div>`;
         }
 
@@ -777,73 +499,73 @@
             let quizzes = DB.get('quizzes') || [], subs = DB.get('quiz_submissions') || {}, mySubs = subs[user.username] || [];
             if (state.activeQuizId) {
                 let q = quizzes.find(x => x.id === state.activeQuizId);
-                return q ? `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs"><h2 class="text-lg font-black text-amber-400">${q.title}</h2><form onsubmit="submitQuiz(event, ${q.id})" class="space-y-4">${q.questions.map((item, qIdx)=>`<div class="p-3 bg-stone-900 border rounded-xl"><p class="font-bold text-amber-100">${item.question}</p>${item.options.map((opt, oIdx)=>`<label class="block p-1"><input type="radio" name="q_${qIdx}" value="${oIdx}" required> ${opt}</label>`).join('')}</div>`).join('')}<button type="submit" class="w-full py-2 dyn-btn text-white rounded-xl font-bold">Valider</button></form></div>` : '';
+                return q ? `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs"><h2 class="text-lg font-black text-amber-400">${q.title}</h2><form onsubmit="submitQuiz(event, ${q.id})" class="space-y-4">${q.questions.map((item, qIdx)=>`<div class="p-3 bg-stone-900 border rounded-xl"><p class="font-bold text-amber-100">${item.question}</p>${item.options.map((opt, oIdx)=>`<label class="block p-1 text-white"><input type="radio" name="q_${qIdx}" value="${oIdx}" required> ${opt}</label>`).join('')}</div>`).join('')}<button type="submit" class="w-full py-2 dyn-btn text-white rounded-xl font-bold">Valider</button></form></div>` : '';
             }
-
             let bestScores = {};
-            mySubs.forEach(s => {
-                if (!bestScores[s.quizId] || s.score > bestScores[s.quizId].score) bestScores[s.quizId] = s;
-            });
+            mySubs.forEach(s => { if (!bestScores[s.quizId] || s.score > bestScores[s.quizId].score) bestScores[s.quizId] = s; });
             let bestList = Object.values(bestScores);
             let avgGeneral = bestList.length > 0 ? (bestList.reduce((acc, curr) => acc + (curr.score / curr.total) * 20, 0) / bestList.length).toFixed(1) : '-';
 
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl flex justify-between items-center">
-                    <div><h2 class="text-xl font-black text-amber-400">Quiz Disponibles & Progression</h2></div>
-                    <div class="text-right"><span class="text-xs text-amber-200/70">Moyenne Générale (Meilleures Notes) :</span><div class="text-xl font-extrabold text-amber-400">${avgGeneral} / 20</div></div>
-                </div>
-                <div class="space-y-2">${quizzes.map(q=>`<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span>${q.title}</span><button onclick="state.activeQuizId=${q.id};render()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Refaire / Lancer</button></div>`).join('')}</div>
-                <div class="dyn-card border p-6 rounded-3xl space-y-2">
-                    <h3 class="font-bold text-amber-300">Ma Progression (Meilleures Notes retenues)</h3>
-                    ${bestList.length === 0 ? '<p class="text-amber-200/50">Aucun quiz complété.</p>' : bestList.map(s => `<div class="p-2 bg-stone-900 rounded flex justify-between"><span>${s.quizTitle} (${s.date})</span><span class="font-bold text-amber-400">${s.score} / ${s.total}</span></div>`).join('')}
-                </div>
-            </div>`;
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl flex justify-between items-center"><h2 class="text-xl font-black text-amber-400">Quiz & Progression</h2><div class="text-right"><span class="text-xs text-amber-200">Moyenne (Meilleures Notes) :</span><div class="text-xl font-extrabold text-amber-400">${avgGeneral} / 20</div></div></div><div class="space-y-2">${quizzes.map(q=>`<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span>${q.title}</span><button onclick="state.activeQuizId=${q.id};render()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Lancer</button></div>`).join('')}</div><div class="dyn-card border p-6 rounded-3xl space-y-2"><h3 class="font-bold text-amber-300">Historique complet</h3>${mySubs.length === 0 ? '<p class="text-amber-200/50">Aucun quiz.</p>' : mySubs.map(s => `<div class="p-2 bg-stone-900 rounded flex justify-between"><span>${s.quizTitle} (${s.date})</span><span class="font-bold text-amber-400">${s.score} / ${s.total}</span></div>`).join('')}</div></div>`;
         }
 
         async function submitQuiz(e, quizId) {
             e.preventDefault();
             let quiz = (DB.get('quizzes') || []).find(x => x.id === quizId), score = 0;
-            quiz.questions.forEach((q, idx) => {
-                let sel = document.querySelector(`input[name="q_${idx}"]:checked`);
-                if (sel && parseInt(sel.value) === parseInt(q.correct)) score++;
-            });
+            quiz.questions.forEach((q, idx) => { let sel = document.querySelector(`input[name="q_${idx}"]:checked`); if (sel && parseInt(sel.value) === parseInt(q.correct)) score++; });
             let user = getCurrentUser(), subs = DB.get('quiz_submissions') || {};
             if (!subs[user.username]) subs[user.username] = [];
             subs[user.username].push({ quizId, quizTitle: quiz.title, score, total: quiz.questions.length, date: new Date().toLocaleDateString() });
             await DB.set('quiz_submissions', subs);
-
-            await pushNotification("Réponse à un Quiz", `${user.pseudo || user.username} a répondu au quiz "${quiz.title}" (${score}/${quiz.questions.length}).`, "admin");
-
             showToast("Quiz validé", `Score : ${score}/${quiz.questions.length}`);
             state.activeQuizId = null; render();
         }
 
         function renderPollsTab(user) {
             let polls = DB.get('polls') || [];
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">Sondages Éclairs</h2></div><div class="space-y-3">${polls.map((p, pIdx) => { let hasVoted = p.voters && p.voters.includes(user.username); return `<div class="dyn-card border p-5 rounded-2xl space-y-3"><h3 class="font-bold text-amber-200 text-sm">${p.question}</h3><div class="space-y-2">${p.options.map((opt, oIdx) => `<div class="p-2.5 bg-stone-900 border rounded-xl flex justify-between items-center text-white"><span>${opt}</span>${hasVoted ? `<span class="font-bold text-amber-400">${p.results[oIdx] || 0} vote(s)</span>` : `<button onclick="votePoll(${pIdx}, ${oIdx})" class="px-3 py-1 dyn-btn text-white rounded-lg">Voter</button>`}</div>`).join('')}</div></div>`).join('')}</div></div>`;
+        }
+
+        async function votePoll(pIdx, oIdx) {
+            let user = getCurrentUser(), polls = DB.get('polls') || [];
+            if (!polls[pIdx].voters) polls[pIdx].voters = [];
+            if (polls[pIdx].voters.includes(user.username)) return;
+            polls[pIdx].voters.push(user.username);
+            if (!polls[pIdx].results) polls[pIdx].results = {};
+            polls[pIdx].results[oIdx] = (polls[pIdx].results[oIdx] || 0) + 1;
+            await DB.set('polls', polls);
+            showToast("Vote enregistré !", "");
+            render();
+        }
+
+        // --- 1. BOÎTE À IDÉES (AVEC VOTES ET 2 JOURS D'EXPIRATION) ---
+        function renderIdeasPage(user) {
+            let ideas = DB.get('ideas_board') || [];
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl flex justify-between items-center">
-                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-square-poll-vertical mr-2"></i>Sondages Éclairs</h2>
+                <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-lightbulb mr-2"></i>Boîte à Idées & Votes</h2>
+                    <form onsubmit="submitIdea(event)" class="space-y-3">
+                        <textarea id="idea-text" required placeholder="Proposez une idée pour la classe..." class="w-full p-3 bg-stone-900 border rounded-xl text-white h-20 resize-none"></textarea>
+                        <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier l'idée</button>
+                    </form>
                 </div>
                 <div class="space-y-3">
-                    ${polls.length === 0 ? `<div class="dyn-card border p-6 text-center text-amber-200/50 rounded-2xl">Aucun sondage en cours.</div>` : ''}
-                    ${polls.map((p, pIdx) => {
-                        let hasVoted = p.voters && p.voters.includes(user.username);
-                        let isExpired = new Date() > new Date(p.expiresAt);
+                    ${ideas.length === 0 ? '<div class="dyn-card border p-6 text-center text-amber-200/50 rounded-2xl">Aucune idée publiée.</div>' : ''}
+                    ${ideas.map(item => {
+                        let isExpired = (Date.now() - item.id) > (2 * 24 * 60 * 60 * 1000);
+                        let hasVoted = item.voters && item.voters.includes(user.username);
+                        let totalVotes = (item.votes || 0);
                         return `
                             <div class="dyn-card border p-5 rounded-2xl space-y-3">
-                                <div class="flex justify-between items-center"><h3 class="font-bold text-amber-200 text-sm">${p.question}</h3><span class="text-[10px] text-amber-400">${isExpired ? 'Sondage Terminé' : 'En cours'}</span></div>
-                                <div class="space-y-2">
-                                    ${p.options.map((opt, oIdx) => {
-                                        let count = p.results[oIdx] || 0;
-                                        let total = Object.values(p.results).reduce((a,b)=>a+b, 0) || 1;
-                                        let percent = Math.round((count / total) * 100);
-                                        return `
-                                            <div class="p-2.5 bg-stone-900 border rounded-xl flex justify-between items-center">
-                                                <span>${opt}</span>
-                                                ${hasVoted || isExpired ? `<span class="font-bold text-amber-400">${count} vote(s) (${percent}%)</span>` : `<button onclick="votePoll(${pIdx}, ${oIdx})" class="px-3 py-1 dyn-btn text-white rounded-lg">Voter</button>`}
-                                            </div>
-                                        `;
-                                    }).join('')}
+                                <div class="flex justify-between items-center border-b pb-2">
+                                    <span class="font-bold text-amber-300">${item.author}</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold ${isExpired ? 'bg-red-500/20 text-red-300' : 'bg-green-500/20 text-green-300'}">${isExpired ? 'Vote Clôturé' : 'Vote en cours (2 jours)'}</span>
+                                </div>
+                                <p class="text-amber-100 text-sm">${item.text}</p>
+                                <div class="flex justify-between items-center pt-2">
+                                    <span class="font-bold text-amber-400">👍 ${totalVotes} vote(s) pour ce projet</span>
+                                    ${!isExpired && !hasVoted ? `<button onclick="voteIdea(${item.id})" class="px-4 py-1.5 dyn-btn text-white font-bold rounded-xl">J'aime ce projet</button>` : ''}
+                                    ${hasVoted ? `<span class="text-amber-200/60 italic">Vous avez voté</span>` : ''}
                                 </div>
                             </div>
                         `;
@@ -852,37 +574,140 @@
             </div>`;
         }
 
-        async function votePoll(pIdx, oIdx) {
+        async function submitIdea(e) {
+            e.preventDefault();
             let user = getCurrentUser();
-            let polls = DB.get('polls') || [];
-            if (!polls[pIdx].voters) polls[pIdx].voters = [];
-            if (polls[pIdx].voters.includes(user.username)) return;
-            polls[pIdx].voters.push(user.username);
-            if (!polls[pIdx].results) polls[pIdx].results = {};
-            polls[pIdx].results[oIdx] = (polls[pIdx].results[oIdx] || 0) + 1;
-            await DB.set('polls', polls);
-
-            await pushNotification("Réponse à un Sondage", `${user.pseudo || user.username} a voté au sondage "${polls[pIdx].question}".`, "admin");
-
-            showToast("Vote enregistré", "Merci pour votre participation !");
+            let text = document.getElementById('idea-text').value;
+            let ideas = DB.get('ideas_board') || [];
+            ideas.unshift({ id: Date.now(), author: user.pseudo || user.username, text, votes: 0, voters: [] });
+            await DB.set('ideas_board', ideas);
+            showToast("Idée publiée !", "Le vote de 2 jours est ouvert.");
+            render();
         }
 
-        function renderDocPage(title, items) {
+        async function voteIdea(id) {
+            let user = getCurrentUser();
+            let ideas = DB.get('ideas_board') || [];
+            let item = ideas.find(i => i.id === id);
+            if (item && (!item.voters || !item.voters.includes(user.username))) {
+                if (!item.voters) item.voters = [];
+                item.voters.push(user.username);
+                item.votes = (item.votes || 0) + 1;
+                await DB.set('ideas_board', ideas);
+                showToast("Vote pris en compte !", "");
+                render();
+            }
+        }
+
+        // --- 2. MODE FOCUS / POMODORO ---
+        function renderPomodoroTab() {
+            let mins = Math.floor(state.pomodoroSeconds / 60);
+            let secs = state.pomodoroSeconds % 60;
+            let timeStr = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
+            return `<div class="max-w-md mx-auto dyn-card border p-8 rounded-3xl text-center space-y-6">
+                <h2 class="text-2xl font-black text-amber-400"><i class="fa-solid fa-stopwatch mr-2"></i>Mode Focus / Pomodoro</h2>
+                <div class="text-6xl font-black font-mono text-white tracking-widest my-4">${timeStr}</div>
+                <div class="flex justify-center gap-3">
+                    <button onclick="startPomodoro()" class="px-5 py-2.5 dyn-btn text-white font-bold rounded-xl"><i class="fa-solid fa-play mr-1"></i> Démarrer</button>
+                    <button onclick="pausePomodoro()" class="px-5 py-2.5 bg-stone-800 text-amber-200 font-bold rounded-xl border"><i class="fa-solid fa-pause mr-1"></i> Pause</button>
+                    <button onclick="resetPomodoro()" class="px-5 py-2.5 bg-stone-900 text-amber-200 font-bold rounded-xl border"><i class="fa-solid fa-rotate-right mr-1"></i> Reset</button>
+                </div>
+            </div>`;
+        }
+
+        function startPomodoro() {
+            if (state.pomodoroRunning) return;
+            state.pomodoroRunning = true;
+            state.pomodoroTimer = setInterval(() => {
+                if (state.pomodoroSeconds > 0) {
+                    state.pomodoroSeconds--;
+                    render();
+                } else {
+                    pausePomodoro();
+                    showToast("Pomodoro terminé !", "Prenez une pause bien méritée.");
+                }
+            }, 1000);
+        }
+
+        function pausePomodoro() {
+            state.pomodoroRunning = false;
+            clearInterval(state.pomodoroTimer);
+            render();
+        }
+
+        function resetPomodoro() {
+            pausePomodoro();
+            state.pomodoroSeconds = 25 * 60;
+            render();
+        }
+
+        // --- 3. CRÉATEUR DE FLASHCARDS ---
+        function renderFlashcardsTab(user) {
+            let decks = DB.get('flashcard_decks') || [];
+
+            if (state.creatingDeck) {
+                return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
+                    <div class="flex justify-between items-center border-b pb-2">
+                        <h2 class="text-lg font-black text-amber-400">Créer un nouveau jeu de Flashcards</h2>
+                        <button onclick="state.creatingDeck=false;render()" class="px-3 py-1 bg-stone-900 border rounded-xl text-amber-200 font-bold">Retour</button>
+                    </div>
+                    <form onsubmit="saveNewFlashcardDeck(event)" class="space-y-3">
+                        <input type="text" id="fc-title" required placeholder="Titre du jeu de flashcards..." class="w-full p-3 bg-stone-950 border rounded-xl text-white font-bold">
+                        <label class="flex items-center gap-2 cursor-pointer pt-1 text-white">
+                            <input type="checkbox" id="fc-public" class="w-4 h-4 accent-amber-600">
+                            <span class="font-bold">Rendre ce jeu public (accessible à toute la classe)</span>
+                        </label>
+                        <div id="fc-cards-container" class="space-y-3 pt-2 max-h-72 overflow-y-auto pr-1">
+                            <div class="p-3 bg-stone-950 rounded-xl border space-y-2">
+                                <input type="text" placeholder="Question 1" class="fc-q w-full p-2 bg-stone-900 border rounded-xl text-white" required>
+                                <input type="text" placeholder="Réponse 1" class="fc-a w-full p-2 bg-stone-900 border rounded-xl text-white" required>
+                            </div>
+                        </div>
+                        <button type="button" onclick="addFlashcardRow()" class="px-3 py-1.5 bg-stone-800 text-amber-300 rounded-xl font-bold">+ Ajouter une carte (max 100)</button>
+                        <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl mt-2">Enregistrer le jeu</button>
+                    </form>
+                </div>`;
+            }
+
+            if (state.activeDeckId) {
+                let deck = decks.find(d => d.id === state.activeDeckId);
+                if (!deck) return '';
+                let card = deck.cards[state.cardIndex] || { q: '', a: '' };
+                return `<div class="max-w-xl mx-auto dyn-card border p-8 rounded-3xl text-center space-y-6 text-xs">
+                    <div class="flex justify-between items-center border-b pb-3">
+                        <h2 class="text-lg font-black text-amber-400">${deck.title} (Carte ${state.cardIndex + 1}/${deck.cards.length})</h2>
+                        <button onclick="state.activeDeckId=null;state.cardIndex=0;render()" class="px-3 py-1 bg-stone-900 border rounded-xl text-amber-200">Quitter</button>
+                    </div>
+                    <div class="p-8 bg-stone-900 border rounded-2xl min-h-[160px] flex flex-col items-center justify-center space-y-4">
+                        <div class="text-sm font-bold text-amber-300">QUESTION :</div>
+                        <div class="text-base text-white font-medium">${card.q}</div>
+                        ${state.showAnswerCard ? `<div class="pt-4 border-t border-amber-900/40 w-full"><div class="text-sm font-bold text-green-400">RÉPONSE :</div><div class="text-base text-white font-medium mt-1">${card.a}</div></div>` : ''}
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <button onclick="prevCard()" class="px-4 py-2 bg-stone-900 border rounded-xl text-amber-200"><i class="fa-solid fa-arrow-left mr-1"></i> Précédent</button>
+                        <button onclick="state.showAnswerCard=!state.showAnswerCard;render()" class="px-5 py-2 dyn-btn text-white font-bold rounded-xl">Voir la réponse</button>
+                        <button onclick="nextCard(${deck.cards.length})" class="px-4 py-2 bg-stone-900 border rounded-xl text-amber-200">Suivant <i class="fa-solid fa-arrow-right ml-1"></i></button>
+                    </div>
+                </div>`;
+            }
+
+            let visibleDecks = decks.filter(d => d.isPublic || d.creator === user.username);
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">${title}</h2></div>
-                <div class="space-y-2">
-                    ${items.length === 0 ? '<p class="text-amber-200/50">Aucune fiche disponible.</p>' : ''}
-                    ${items.map(d=>`
+                <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-clone mr-2"></i>Jeux de Flashcards</h2>
+                    <button onclick="state.creatingDeck=true;render()" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">+ Créer un nouveau jeu de flashcard</button>
+                </div>
+                <div class="space-y-3">
+                    ${visibleDecks.length === 0 ? '<div class="dyn-card border p-6 text-center text-amber-200/50 rounded-2xl">Aucun jeu de flashcards disponible.</div>' : ''}
+                    ${visibleDecks.map(d => `
                         <div class="dyn-card border p-4 rounded-2xl flex justify-between items-center">
                             <div>
-                                <span class="font-bold text-white">${d.title}</span>
-                                ${d.category ? `<span class="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg">${d.category}</span>` : ''}
+                                <h4 class="font-bold text-amber-300 text-sm cursor-pointer" onclick="state.activeDeckId=${d.id};state.cardIndex=0;state.showAnswerCard=false;render()">${d.title}</h4>
+                                <p class="text-[10px] text-amber-200/60">Créé par ${d.creator} • ${d.cards.length} cartes • ${d.isPublic ? 'Public' : 'Privé'}</p>
                             </div>
                             <div class="flex gap-2">
-                                ${d.fileType === 'url' ? `<a href="${d.fileData}" target="_blank" class="px-3 py-1.5 bg-stone-900 border text-amber-200 rounded-xl font-bold">Ouvrir le lien</a>` : `
-                                    <button onclick="openFileViewer('${d.title}', '${d.fileData}', '${d.fileType}')" class="px-3 py-1.5 bg-sky-600 text-white rounded-xl font-bold">Aperçu</button>
-                                    <a href="${d.fileData}" download class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Télécharger</a>
-                                `}
+                                <button onclick="state.activeDeckId=${d.id};state.cardIndex=0;state.showAnswerCard=false;render()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Jouer</button>
+                                ${d.creator === user.username ? `<button onclick="deleteFlashcardDeck(${d.id})" class="px-2.5 py-1.5 bg-red-600/30 text-red-300 rounded-xl"><i class="fa-solid fa-trash"></i></button>` : ''}
                             </div>
                         </div>
                     `).join('')}
@@ -890,37 +715,113 @@
             </div>`;
         }
 
+        function addFlashcardRow() {
+            let container = document.getElementById('fc-cards-container');
+            if (container.children.length >= 100) { alert("Maximum 100 cartes par jeu."); return; }
+            let div = document.createElement('div');
+            div.className = 'p-3 bg-stone-950 rounded-xl border space-y-2';
+            div.innerHTML = `<input type="text" placeholder="Question ${container.children.length + 1}" class="fc-q w-full p-2 bg-stone-900 border rounded-xl text-white" required><input type="text" placeholder="Réponse ${container.children.length + 1}" class="fc-a w-full p-2 bg-stone-900 border rounded-xl text-white" required>`;
+            container.appendChild(div);
+        }
+
+        async function saveNewFlashcardDeck(e) {
+            e.preventDefault();
+            let user = getCurrentUser();
+            let title = document.getElementById('fc-title').value;
+            let isPublic = document.getElementById('fc-public').checked;
+            let qFields = document.querySelectorAll('.fc-q');
+            let aFields = document.querySelectorAll('.fc-a');
+            let cards = [];
+            for (let i = 0; i < qFields.length; i++) {
+                if (qFields[i].value && aFields[i].value) cards.push({ q: qFields[i].value, a: aFields[i].value });
+            }
+            if (cards.length === 0) { alert("Ajoutez au moins une carte."); return; }
+            let decks = DB.get('flashcard_decks') || [];
+            decks.unshift({ id: Date.now(), title, creator: user.username, isPublic, cards });
+            await DB.set('flashcard_decks', decks);
+            showToast("Jeu enregistré !", "");
+            state.creatingDeck = false;
+            render();
+        }
+
+        async function deleteFlashcardDeck(id) {
+            if (!confirm("Supprimer ce jeu de flashcards ?")) return;
+            let decks = DB.get('flashcard_decks') || [];
+            decks = decks.filter(d => d.id !== id);
+            await DB.set('flashcard_decks', decks);
+            render();
+        }
+
+        function nextCard(total) {
+            if (state.cardIndex < total - 1) { state.cardIndex++; state.showAnswerCard = false; render(); }
+        }
+
+        function prevCard() {
+            if (state.cardIndex > 0) { state.cardIndex--; state.showAnswerCard = false; render(); }
+        }
+
+        // --- 4. SIMULATEUR DE MOYENNE À L'EXAMEN ---
+        function renderSimulatorTab(user) {
+            return `<div class="max-w-3xl mx-auto space-y-6 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-calculator mr-2"></i>Simulateur de Moyenne au Bac</h2>
+                    
+                    <div class="space-y-3 border-b pb-6">
+                        <h3 class="font-bold text-amber-300 text-sm">1. Simulation par Trimestres Généraux</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <div><label class="block font-bold">Trimestre 1 :</label><input type="number" step="0.1" id="sim-t1" placeholder="Ex: 14" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div>
+                            <div><label class="block font-bold">Trimestre 2 :</label><input type="number" step="0.1" id="sim-t2" placeholder="Ex: 15" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div>
+                            <div><label class="block font-bold">Trimestre 3 :</label><input type="number" step="0.1" id="sim-t3" placeholder="Ex: 14.5" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div>
+                        </div>
+                        <button onclick="calculateGeneralBac()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Calculer la moyenne générale visée</button>
+                        <div id="sim-general-result" class="text-sm font-bold text-amber-300 pt-1"></div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-amber-300 text-sm">2. Simulation Matière par Matière</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div><label class="block font-bold">Moyenne actuelle dans la matière :</label><input type="number" step="0.1" id="sim-mat-cur" placeholder="Ex: 12" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div>
+                            <div><label class="block font-bold">Coefficient de l'épreuve :</label><input type="number" id="sim-mat-coeff" placeholder="Ex: 4" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white mt-1"></div>
+                        </div>
+                        <button onclick="calculateSubjectBac()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Calculer l'objectif matière</button>
+                        <div id="sim-subject-result" class="text-sm font-bold text-amber-300 pt-1"></div>
+                    </div>
+                </div>
+            </div>`;
+        }
+
+        function calculateGeneralBac() {
+            let t1 = parseFloat(document.getElementById('sim-t1').value) || 0;
+            let t2 = parseFloat(document.getElementById('sim-t2').value) || 0;
+            let t3 = parseFloat(document.getElementById('sim-t3').value) || 0;
+            let avg = ((t1 + t2 + t3) / 3).toFixed(2);
+            let mention = avg >= 16 ? 'Très Bien 🏆' : avg >= 14 ? 'Bien 🌟' : avg >= 12 ? 'Assez Bien 👍' : avg >= 10 ? 'Admis' : 'Non Admis';
+            document.getElementById('sim-general-result').innerHTML = `Moyenne estimée : <span class="text-white text-base">${avg} / 20</span> (Mention visée : ${mention})`;
+        }
+
+        function calculateSubjectBac() {
+            let cur = parseFloat(document.getElementById('sim-mat-cur').value) || 0;
+            let coeff = parseFloat(document.getElementById('sim-mat-coeff').value) || 1;
+            let target = (cur * 1.05).toFixed(2); // Objectif +5% d'amélioration estimée
+            document.getElementById('sim-subject-result').innerHTML = `Pour viser l'excellence avec un coeff ${coeff}, visez une note d'environ <span class="text-white text-base">${target > 20 ? 20 : target} / 20</span> à l'examen.`;
+        }
+
+        function renderDocPage(title, items) {
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">${title}</h2></div><div class="space-y-2">${items.length === 0 ? '<p class="text-amber-200/50">Aucun document.</p>' : ''}${items.map(d=>`<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center text-white"><div><span class="font-bold">${d.title}</span> ${d.category ? `<span class="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg">${d.category}</span>` : ''}</div><div class="flex gap-2">${d.fileType === 'url' ? `<a href="${d.fileData}" target="_blank" class="px-3 py-1.5 bg-stone-900 border text-amber-200 rounded-xl font-bold">Ouvrir</a>` : `<button onclick="openFileViewer('${d.title}', '${d.fileData}', '${d.fileType}')" class="px-3 py-1.5 bg-sky-600 text-white rounded-xl font-bold">Aperçu</button><a href="${d.fileData}" download class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Télécharger</a>`}</div></div>`).join('')}</div></div>`;
+        }
+
         function renderExamsTab() {
             let exams = DB.get('revision_sheets') || [];
-            let filtered = exams.filter(e => e.category && e.category.includes('Bac'));
-            return renderDocPage('Sujets & Corrigés Types Bac', filtered);
+            return renderDocPage('Sujets & Corrigés Types Bac', exams.filter(e => e.category && e.category.includes('Bac')));
         }
 
         function renderDocumentsTab(user) {
             let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + user.username) || '[]');
             if (state.editingDocIndex !== null) {
                 let doc = docs[state.editingDocIndex] || { title: '', content: '' };
-                return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
-                    <div class="flex justify-between items-center border-b pb-2">
-                        <h2 class="text-lg font-black text-amber-400">Édition du document</h2>
-                        <button onclick="state.editingDocIndex=null;render()" class="px-3 py-1 bg-stone-900 border rounded-xl text-amber-200 font-bold">Retour</button>
-                    </div>
-                    <form onsubmit="saveDocContent(event, '${user.username}', ${state.editingDocIndex})" class="space-y-4">
-                        <input type="text" id="doc-title-inp" value="${doc.title}" required class="w-full p-3 bg-stone-900 border rounded-xl text-white text-sm font-bold">
-                        <textarea id="doc-content-inp" required class="w-full p-4 bg-stone-900 border rounded-xl h-64 text-white text-xs">${doc.content}</textarea>
-                        <button type="submit" class="px-5 py-2.5 dyn-btn text-white font-bold rounded-xl">Enregistrer</button>
-                    </form>
-                </div>`;
+                return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs"><div class="flex justify-between items-center border-b pb-2"><h2 class="text-lg font-black text-amber-400">Édition</h2><button onclick="state.editingDocIndex=null;render()" class="px-3 py-1 bg-stone-900 border rounded-xl text-amber-200 font-bold">Retour</button></div><form onsubmit="saveDocContent(event, '${user.username}', ${state.editingDocIndex})" class="space-y-4"><input type="text" id="doc-title-inp" value="${doc.title}" required class="w-full p-3 bg-stone-900 border rounded-xl text-white font-bold"><textarea id="doc-content-inp" required class="w-full p-4 bg-stone-900 border rounded-xl h-64 text-white">${doc.content}</textarea><button type="submit" class="px-5 py-2.5 dyn-btn text-white font-bold rounded-xl">Enregistrer</button></form></div>`;
             }
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h2 class="text-xl font-black text-amber-400">Mon Traitement de Texte</h2>
-                    <button onclick="openNewDocModal('${user.username}')" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">+ Nouveau Document</button>
-                </div>
-                <div class="space-y-2">
-                    ${docs.map((d, idx) => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="cursor-pointer font-bold text-amber-200" onclick="state.editingDocIndex=${idx};render()">${d.title}</span><button onclick="deleteTextDoc('${user.username}', ${idx})" class="text-red-400"><i class="fa-solid fa-trash"></i></button></div>`).join('')}
-                </div>
-            </div>`;
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-6 rounded-3xl space-y-3"><h2 class="text-xl font-black text-amber-400">Traitement de Texte</h2><button onclick="openNewDocModal('${user.username}')" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">+ Nouveau Document</button></div><div class="space-y-2">${docs.map((d, idx) => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center text-white"><span class="cursor-pointer font-bold" onclick="state.editingDocIndex=${idx};render()">${d.title}</span><button onclick="deleteTextDoc('${user.username}', ${idx})" class="text-red-400"><i class="fa-solid fa-trash"></i></button></div>`).join('')}</div></div>`;
         }
 
         function openNewDocModal(username) {
@@ -938,195 +839,73 @@
                 docs[idx].title = document.getElementById('doc-title-inp').value;
                 docs[idx].content = document.getElementById('doc-content-inp').value;
                 localStorage.setItem('leqg_txt_docs_' + username, JSON.stringify(docs));
-                showToast("Enregistré !", "Sauvegardé.");
+                showToast("Enregistré !", "");
                 state.editingDocIndex = null;
                 render();
             }
         }
 
         function deleteTextDoc(username, idx) {
-            if (!confirm("Supprimer ce document ?")) return;
+            if (!confirm("Supprimer ?")) return;
             let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + username) || '[]');
             docs.splice(idx, 1);
             localStorage.setItem('leqg_txt_docs_' + username, JSON.stringify(docs));
             render();
         }
 
-        function renderFlashcardsTab(user) { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Flashcards</h2></div>`; }
-        function renderOrientationTab() { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">CV & Lettres</h2></div>`; }
-        function renderSimulatorTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Simulateur</h2></div>`; }
-        function renderMoodTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Humeur</h2></div>`; }
-        function renderPomodoroTab() { return `<div class="max-w-md mx-auto dyn-card border p-8 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Pomodoro</h2></div>`; }
-        function renderGoldBookTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Livre d'or</h2></div>`; }
-        function renderCustomPage(pageId) {
-            let pages = DB.get('custom_pages') || [];
-            let p = pages.find(x => x.id === pageId);
-            return p ? `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs space-y-4"><h2 class="text-xl font-black text-amber-400">${p.title}</h2><div>${p.content}</div></div>` : '';
-        }
-        function renderIdeasPage() { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Boîte à idées</h2></div>`; }
-
         function renderChat(user) {
             let users = DB.get('users') || [], msgs = DB.get('messages') || [];
             let active = state.chatMode === 'general' ? msgs.filter(m => m.type === 'general') : msgs.filter(m => m.type === 'private' && ((m.sender === user.username && m.recipient === state.targetUser) || (m.sender === state.targetUser && m.recipient === user.username)));
-
-            return `<div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 h-[500px] text-xs">
-                <div class="dyn-card border p-3 flex flex-col space-y-2 rounded-3xl">
-                    <button onclick="state.chatMode='general';render()" class="p-2.5 rounded-xl ${state.chatMode==='general'?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">📢 Canal Général</button>
-                    <div class="text-[10px] text-amber-400 font-bold pt-2">Privés :</div>
-                    <div class="flex-1 overflow-y-auto space-y-1">
-                        ${users.filter(u => u.username !== user.username).map(u => `
-                            <button onclick="state.chatMode='private';state.targetUser='${u.username}';render()" class="w-full text-left p-2 rounded-xl flex items-center gap-2 ${state.chatMode==='private' && state.targetUser===u.username?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">
-                                ${renderAvatarBadge(u)}
-                                <div><div class="font-bold">${u.pseudo || u.username}</div></div>
-                            </button>
-                        `).join('')}
-                    </div>
-                </div>
-                <div class="md:col-span-3 dyn-card border p-4 flex flex-col justify-between rounded-3xl">
-                    <div class="border-b pb-2 font-bold text-amber-400">${state.chatMode === 'general' ? 'Canal Général' : 'Discussion privée'}</div>
-                    <div class="flex-1 overflow-y-auto space-y-2 bg-stone-900/40 p-3 rounded-2xl my-2">
-                        ${active.map(m => `
-                            <div class="p-2.5 bg-stone-950 rounded-xl space-y-1 border border-amber-900/20">
-                                <div class="flex justify-between text-[10px] text-amber-400 font-bold"><span>${m.sender}</span><span>${m.time}</span></div>
-                                <p class="text-amber-100">${m.text}</p>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <form onsubmit="sendChat(event)" class="flex gap-2">
-                        <input type="text" id="c-inp" required placeholder="Écrire un message..." class="flex-1 p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                        <button type="submit" class="dyn-btn px-4 text-white rounded-xl font-bold">Envoyer</button>
-                    </form>
-                </div>
-            </div>`;
+            return `<div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 h-[500px] text-xs"><div class="dyn-card border p-3 flex flex-col space-y-2 rounded-3xl"><button onclick="state.chatMode='general';render()" class="p-2.5 rounded-xl ${state.chatMode==='general'?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">📢 Général</button><div class="text-[10px] text-amber-400 font-bold pt-2">Privés :</div><div class="flex-1 overflow-y-auto space-y-1">${users.filter(u => u.username !== user.username).map(u => `<button onclick="state.chatMode='private';state.targetUser='${u.username}';render()" class="w-full text-left p-2 rounded-xl flex items-center gap-2 ${state.chatMode==='private' && state.targetUser===u.username?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">${renderAvatarBadge(u)}<div class="font-bold">${u.pseudo || u.username}</div></button>`).join('')}</div></div><div class="md:col-span-3 dyn-card border p-4 flex flex-col justify-between rounded-3xl"><div class="border-b pb-2 font-bold text-amber-400">${state.chatMode === 'general' ? 'Canal Général' : 'Discussion privée'}</div><div class="flex-1 overflow-y-auto space-y-2 bg-stone-900/40 p-3 rounded-2xl my-2">${active.map(m => `<div class="p-2.5 bg-stone-950 rounded-xl space-y-1 border border-amber-900/20"><div class="flex justify-between text-[10px] text-amber-400 font-bold"><span>${m.sender}</span><span>${m.time}</span></div><p class="text-amber-100">${m.text}</p></div>`).join('')}</div><form onsubmit="sendChat(event)" class="flex gap-2"><input type="text" id="c-inp" required placeholder="Message..." class="flex-1 p-2.5 bg-stone-900 border rounded-xl text-white"><button type="submit" class="dyn-btn px-4 text-white rounded-xl font-bold">Envoyer</button></form></div></div>`;
         }
 
         async function sendChat(e) {
             e.preventDefault();
-            let user = getCurrentUser();
-            let text = document.getElementById('c-inp').value;
-            let msgs = DB.get('messages') || [];
-            msgs.push({
-                type: state.chatMode,
-                sender: `${user.pseudo || user.username} (${user.realName || user.username})`,
-                recipient: state.chatMode === 'private' ? state.targetUser : null,
-                text,
-                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-            });
+            let user = getCurrentUser(), text = document.getElementById('c-inp').value, msgs = DB.get('messages') || [];
+            msgs.push({ type: state.chatMode, sender: `${user.pseudo || user.username}`, recipient: state.chatMode === 'private' ? state.targetUser : null, text, time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
             await DB.set('messages', msgs);
             document.getElementById('c-inp').value = '';
             render();
-            await pushNotification("Nouveau Message", `${user.pseudo || user.username} : ${text.substring(0, 30)}...`);
         }
 
-        // --- ESPACE ADMIN COMPLET (AVEC EXPORTS, CATÉGORIES & SONDAGES) ---
+        // --- ESPACE ADMIN COMPLET (AVEC UPLOAD APP & PROCÉDURE) ---
         function renderAdmin() {
-            return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-4 rounded-3xl flex gap-2 flex-wrap">
-                    <button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes & Exports</button>
-                    <button onclick="state.adminSub='quizzes';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='quizzes'?'dyn-btn text-white':'bg-stone-900'}">Quiz Multi-questions</button>
-                    <button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches & Corrigés</button>
-                    <button onclick="state.adminSub='polls';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='polls'?'dyn-btn text-white':'bg-stone-900'}">Sondages Éclairs</button>
-                    <button onclick="state.adminSub='formations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='formations'?'dyn-btn text-white':'bg-stone-900'}">Formations Post-Bac</button>
-                    <button onclick="state.adminSub='appreciations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='appreciations'?'dyn-btn text-white':'bg-stone-900'}">Appréciations</button>
-                    <button onclick="state.adminSub='theme';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='theme'?'dyn-btn text-white':'bg-stone-900'}">Thèmes, Média & QR</button>
-                </div>
-                ${state.adminSub==='users'?renderAdminUsersWithExport():''}
-                ${state.adminSub==='quizzes'?renderAdminQuizzes():''}
-                ${state.adminSub==='docs'?renderAdminDocsCategorized():''}
-                ${state.adminSub==='polls'?renderAdminPolls():''}
-                ${state.adminSub==='formations'?renderAdminFormations():''}
-                ${state.adminSub==='appreciations'?renderAdminAppreciations():''}
-                ${state.adminSub==='theme'?renderAdminThemeFull():''}
-            </div>`;
+            return `<div class="max-w-4xl mx-auto space-y-4 text-xs"><div class="dyn-card border p-4 rounded-3xl flex gap-2 flex-wrap"><button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes & Exports</button><button onclick="state.adminSub='quizzes';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='quizzes'?'dyn-btn text-white':'bg-stone-900'}">Quiz</button><button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches & Corrigés</button><button onclick="state.adminSub='polls';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='polls'?'dyn-btn text-white':'bg-stone-900'}">Sondages</button><button onclick="state.adminSub='formations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='formations'?'dyn-btn text-white':'bg-stone-900'}">Formations</button><button onclick="state.adminSub='appreciations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='appreciations'?'dyn-btn text-white':'bg-stone-900'}">Appréciations</button><button onclick="state.adminSub='theme';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='theme'?'dyn-btn text-white':'bg-stone-900'}">Thèmes & App Mobile</button></div>${state.adminSub==='users'?renderAdminUsersWithExport():''}${state.adminSub==='quizzes'?renderAdminQuizzes():''}${state.adminSub==='docs'?renderAdminDocsCategorized():''}${state.adminSub==='polls'?renderAdminPolls():''}${state.adminSub==='formations'?renderAdminFormations():''}${state.adminSub==='appreciations'?renderAdminAppreciations():''}${state.adminSub==='theme'?renderAdminThemeFull():''}</div>`;
         }
 
         function renderAdminUsersWithExport() {
             let users = DB.get('users') || [];
-            let subs = DB.get('quiz_submissions') || {};
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <div class="flex justify-between items-center flex-wrap gap-2 border-b pb-3">
-                    <h3 class="font-bold text-amber-300 text-sm">Gestion des Comptes, Mots de passe & Exports</h3>
-                    <button onclick="exportAllUsersJSON()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold text-xs"><i class="fa-solid fa-download mr-1"></i> Exporter TOUS les comptes</button>
-                </div>
-
-                <form onsubmit="adminCreateUser(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-2">
-                    <h4 class="font-bold text-amber-400">Créer un nouvel utilisateur</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                        <input type="text" id="adm-new-user" required placeholder="Identifiant..." class="p-2 bg-stone-950 border rounded-xl text-white">
-                        <input type="password" id="adm-new-pass" required placeholder="Mot de passe initial..." class="p-2 bg-stone-950 border rounded-xl text-white">
-                        <select id="adm-new-role" class="p-2 bg-stone-950 border rounded-xl text-amber-100">
-                            <option value="student">Élève</option>
-                            <option value="delegate">Délégué</option>
-                            <option value="admin">Administrateur</option>
-                        </select>
-                    </div>
-                    <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Créer le compte</button>
-                </form>
-
-                <div class="space-y-2">
-                    ${users.map((u, idx) => {
-                        let userSubs = subs[u.username] || [];
-                        return `
-                            <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center flex-wrap gap-2">
-                                <div>
-                                    <span class="font-bold text-white">${u.username}</span> (${u.realName || 'Sans nom'}) - <span class="text-amber-400 font-bold">${u.role}</span>
-                                    <div class="text-[10px] text-amber-200/60">${userSubs.length} quiz réalisé(s)</div>
-                                </div>
-                                <div class="flex gap-1 items-center flex-wrap">
-                                    <input type="text" id="reset_pass_${idx}" placeholder="Nouveau mdp" class="p-1 bg-stone-950 border rounded text-xs w-20 text-white">
-                                    <button onclick="adminResetPass(${idx})" class="px-2 py-1 bg-sky-600 text-white rounded font-bold text-[10px]">Réinit.</button>
-                                    <select onchange="adminChangeRole(${idx}, this.value)" class="p-1 bg-stone-950 border rounded text-[10px] text-amber-100">
-                                        <option value="student" ${u.role==='student'?'selected':''}>Élève</option>
-                                        <option value="delegate" ${u.role==='delegate'?'selected':''}>Délégué</option>
-                                        <option value="admin" ${u.role==='admin'?'selected':''}>Admin</option>
-                                    </select>
-                                    <button onclick="exportSingleUserJSON('${u.username}')" class="px-2 py-1 bg-stone-950 border text-amber-200 rounded font-bold text-[10px]" title="Exporter compte"><i class="fa-solid fa-file-export"></i></button>
-                                    <button onclick="exportSingleUserQuizJSON('${u.username}')" class="px-2 py-1 bg-stone-950 border text-amber-300 rounded font-bold text-[10px]" title="Exporter quiz"><i class="fa-solid fa-chart-line"></i></button>
-                                    <button onclick="adminDeleteUser(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold text-[10px]"><i class="fa-solid fa-trash"></i></button>
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>`;
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-6"><div class="flex justify-between items-center border-b pb-3"><h3 class="font-bold text-amber-300 text-sm">Gestion des Comptes</h3><button onclick="exportAllUsersJSON()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold text-xs">Exporter tout</button></div><form onsubmit="adminCreateUser(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-2"><h4 class="font-bold text-amber-400">Créer un utilisateur</h4><div class="grid grid-cols-1 md:grid-cols-3 gap-2"><input type="text" id="adm-new-user" required placeholder="ID..." class="p-2 bg-stone-950 border rounded-xl text-white"><input type="password" id="adm-new-pass" required placeholder="MDP..." class="p-2 bg-stone-950 border rounded-xl text-white"><select id="adm-new-role" class="p-2 bg-stone-950 border rounded-xl text-white"><option value="student">Élève</option><option value="delegate">Délégué</option><option value="admin">Admin</option></select></div><button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Créer</button></form><div class="space-y-2">${users.map((u, idx) => `<div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center text-white"><div><span class="font-bold">${u.username}</span> (${u.realName || 'Sans nom'}) - <span class="text-amber-400 font-bold">${u.role}</span></div><div class="flex gap-1 items-center"><input type="text" id="reset_pass_${idx}" placeholder="Nouveau mdp" class="p-1 bg-stone-950 border rounded text-xs w-20 text-white"><button onclick="adminResetPass(${idx})" class="px-2 py-1 bg-sky-600 text-white rounded font-bold text-[10px]">Réinit.</button><select onchange="adminChangeRole(${idx}, this.value)" class="p-1 bg-stone-950 border rounded text-[10px] text-white"><option value="student" ${u.role==='student'?'selected':''}>Élève</option><option value="delegate" ${u.role==='delegate'?'selected':''}>Délégué</option><option value="admin" ${u.role==='admin'?'selected':''}>Admin</option></select><button onclick="adminDeleteUser(${idx})" class="px-2 py-1 bg-red-600/30 text-red-300 rounded font-bold text-[10px]"><i class="fa-solid fa-trash"></i></button></div></div>`).join('')}</div></div>`;
         }
 
         async function adminCreateUser(e) {
             e.preventDefault();
-            let users = DB.get('users') || [];
-            let username = document.getElementById('adm-new-user').value.trim();
-            let password = document.getElementById('adm-new-pass').value.trim();
-            let role = document.getElementById('adm-new-role').value;
-            if (users.some(u => u.username === username)) { alert("Cet identifiant existe déjà."); return; }
+            let users = DB.get('users') || [], username = document.getElementById('adm-new-user').value.trim(), password = document.getElementById('adm-new-pass').value.trim(), role = document.getElementById('adm-new-role').value;
+            if (users.some(u => u.username === username)) { alert("Existe déjà."); return; }
             users.push({ username, password, role, status: 'active', mustChangePass: true, realName: username, pseudo: username });
             await DB.set('users', users);
-            showToast("Succès", "Compte créé !");
             render();
         }
 
         async function adminResetPass(idx) {
-            let users = DB.get('users') || [];
-            let newPass = document.getElementById(`reset_pass_${idx}`).value.trim();
-            if (!newPass) { alert("Entrez un mot de passe."); return; }
-            users[idx].password = newPass;
-            users[idx].mustChangePass = true;
+            let users = DB.get('users') || [], newPass = document.getElementById(`reset_pass_${idx}`).value.trim();
+            if (!newPass) return;
+            users[idx].password = newPass; users[idx].mustChangePass = true;
             await DB.set('users', users);
-            showToast("Succès", "Mot de passe réinitialisé !");
-            render();
+            showToast("MDP réinitialisé", "");
         }
 
         async function adminChangeRole(idx, newRole) {
             let users = DB.get('users') || [];
             users[idx].role = newRole;
             await DB.set('users', users);
-            showToast("Succès", "Rôle mis à jour !");
             render();
         }
 
         async function adminDeleteUser(idx) {
             let users = DB.get('users') || [];
-            if (users[idx].username === 'Charlesadmin') { alert("Impossible de supprimer le compte admin principal."); return; }
-            if (!confirm("Supprimer ce compte ?")) return;
+            if (users[idx].username === 'Charlesadmin') return;
+            if (!confirm("Supprimer ?")) return;
             users.splice(idx, 1);
             await DB.set('users', users);
             render();
@@ -1134,152 +913,56 @@
 
         function downloadJSON(filename, data) {
             let blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            let url = URL.createObjectURL(blob);
-            let a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
+            let url = URL.createObjectURL(blob), a = document.createElement('a');
+            a.href = url; a.download = filename; a.click(); URL.revokeObjectURL(url);
         }
 
-        function exportAllUsersJSON() {
-            let users = DB.get('users') || [];
-            downloadJSON(`LEQG_Tous_les_Comptes_${new Date().toISOString().slice(0,10)}.json`, users);
-            showToast("Export Réussi", "Fichier JSON des comptes téléchargé.");
-        }
-
-        function exportSingleUserJSON(username) {
-            let user = (DB.get('users') || []).find(u => u.username === username);
-            if (user) {
-                downloadJSON(`LEQG_Compte_${username}.json`, user);
-                showToast("Export Réussi", `Compte ${username} téléchargé.`);
-            }
-        }
-
-        function exportSingleUserQuizJSON(username) {
-            let subs = (DB.get('quiz_submissions') || {})[username] || [];
-            downloadJSON(`LEQG_Quiz_${username}.json`, { username, submissions: subs });
-            showToast("Export Réussi", `Quiz de ${username} téléchargés.`);
-        }
+        function exportAllUsersJSON() { downloadJSON('LEQG_Comptes.json', DB.get('users') || []); }
 
         function renderAdminQuizzes() {
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300">Création de Quiz Multi-questions</h3>
-                <form onsubmit="createQuiz(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
-                    <input type="text" id="qz-title" required placeholder="Titre du quiz..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    <div id="qz-questions-container" class="space-y-3">
-                        <div class="p-3 bg-stone-950 rounded-xl border space-y-2">
-                            <input type="text" placeholder="Intitulé de la question 1..." class="q-text w-full p-2 bg-stone-900 border rounded-xl text-white" required>
-                            <input type="text" placeholder="Option 1" class="q-opt-0 w-full p-1.5 bg-stone-900 border rounded text-white" required>
-                            <input type="text" placeholder="Option 2" class="q-opt-1 w-full p-1.5 bg-stone-900 border rounded text-white" required>
-                            <input type="text" placeholder="Option 3" class="q-opt-2 w-full p-1.5 bg-stone-900 border rounded text-white">
-                            <input type="text" placeholder="Option 4" class="q-opt-3 w-full p-1.5 bg-stone-900 border rounded text-white">
-                            <select class="q-correct w-full p-2 bg-stone-900 border rounded-xl text-amber-300 font-bold">
-                                <option value="0">Bonne réponse : Option 1</option>
-                                <option value="1">Bonne réponse : Option 2</option>
-                                <option value="2">Bonne réponse : Option 3</option>
-                                <option value="3">Bonne réponse : Option 4</option>
-                            </select>
-                        </div>
-                    </div>
-                    <button type="button" onclick="addQuizQuestionField()" class="px-3 py-1.5 bg-stone-800 text-amber-300 rounded-xl font-bold">+ Ajouter une question</button>
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl mt-2">Publier le Quiz & Notifier</button>
-                </form>
-            </div>`;
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4 text-white"><h3 class="font-bold text-amber-300">Création de Quiz</h3><form onsubmit="createQuiz(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3"><input type="text" id="qz-title" required placeholder="Titre..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white"><div id="qz-questions-container" class="space-y-3"><div class="p-3 bg-stone-950 rounded-xl border space-y-2"><input type="text" placeholder="Question..." class="q-text w-full p-2 bg-stone-900 border rounded-xl text-white" required><input type="text" placeholder="Option 1" class="q-opt-0 w-full p-1.5 bg-stone-900 border rounded text-white" required><input type="text" placeholder="Option 2" class="q-opt-1 w-full p-1.5 bg-stone-900 border rounded text-white" required><select class="q-correct w-full p-2 bg-stone-900 border rounded-xl text-amber-300"><option value="0">Option 1</option><option value="1">Option 2</option></select></div></div><button type="button" onclick="addQuizQuestionField()" class="px-3 py-1.5 bg-stone-800 text-amber-300 rounded-xl font-bold">+ Question</button><button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier</button></form></div>`;
         }
 
         function addQuizQuestionField() {
             let container = document.getElementById('qz-questions-container');
             let div = document.createElement('div');
             div.className = 'p-3 bg-stone-950 rounded-xl border space-y-2';
-            div.innerHTML = `
-                <input type="text" placeholder="Intitulé de la question..." class="q-text w-full p-2 bg-stone-900 border rounded-xl text-white" required>
-                <input type="text" placeholder="Option 1" class="q-opt-0 w-full p-1.5 bg-stone-900 border rounded text-white" required>
-                <input type="text" placeholder="Option 2" class="q-opt-1 w-full p-1.5 bg-stone-900 border rounded text-white" required>
-                <input type="text" placeholder="Option 3" class="q-opt-2 w-full p-1.5 bg-stone-900 border rounded text-white">
-                <input type="text" placeholder="Option 4" class="q-opt-3 w-full p-1.5 bg-stone-900 border rounded text-white">
-                <select class="q-correct w-full p-2 bg-stone-900 border rounded-xl text-amber-300 font-bold">
-                    <option value="0">Bonne réponse : Option 1</option>
-                    <option value="1">Bonne réponse : Option 2</option>
-                    <option value="2">Bonne réponse : Option 3</option>
-                    <option value="3">Bonne réponse : Option 4</option>
-                </select>
-            `;
+            div.innerHTML = `<input type="text" placeholder="Question..." class="q-text w-full p-2 bg-stone-900 border rounded-xl text-white" required><input type="text" placeholder="Option 1" class="q-opt-0 w-full p-1.5 bg-stone-900 border rounded text-white" required><input type="text" placeholder="Option 2" class="q-opt-1 w-full p-1.5 bg-stone-900 border rounded text-white" required><select class="q-correct w-full p-2 bg-stone-900 border rounded-xl text-amber-300"><option value="0">Option 1</option><option value="1">Option 2</option></select>`;
             container.appendChild(div);
         }
 
         async function createQuiz(e) {
             e.preventDefault();
             let title = document.getElementById('qz-title').value;
-            let qBlocks = document.querySelectorAll('#qz-questions-container > div');
-            let questions = [];
+            let qBlocks = document.querySelectorAll('#qz-questions-container > div'), questions = [];
             qBlocks.forEach(block => {
                 let question = block.querySelector('.q-text').value;
-                let options = [
-                    block.querySelector('.q-opt-0').value,
-                    block.querySelector('.q-opt-1').value,
-                    block.querySelector('.q-opt-2').value,
-                    block.querySelector('.q-opt-3').value
-                ].filter(Boolean);
+                let options = [block.querySelector('.q-opt-0').value, block.querySelector('.q-opt-1').value].filter(Boolean);
                 let correct = block.querySelector('.q-correct').value;
                 questions.push({ question, options, correct });
             });
-
             let quizzes = DB.get('quizzes') || [];
             quizzes.push({ id: Date.now(), title, questions });
             await DB.set('quizzes', quizzes);
-            showToast("Succès", "Quiz publié !");
-            await pushNotification("Nouveau Quiz Disponible !", `Le quiz "${title}" vient d'être publié.`);
+            showToast("Quiz publié !", "");
             render();
         }
 
         function renderAdminDocsCategorized() {
             let sheets = DB.get('revision_sheets') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <h3 class="font-bold text-amber-300 text-sm">Publication & Catégorisation des Documents</h3>
-                <form onsubmit="adminUploadCategorizedDoc(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
-                    <h4 class="font-bold text-amber-400">Publier un document / corrigé</h4>
-                    <input type="text" id="cat-doc-title" required placeholder="Titre du document..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <select id="cat-doc-type" required class="p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
-                            <option value="Fiche de Révision">📖 Fiche de Révision</option>
-                            <option value="Sujet Type Bac">📄 Sujet Type Bac</option>
-                            <option value="Fiche d'Exercices">✏️ Fiche d'Exercices</option>
-                            <option value="Corrigé d'Exercices">✅ Corrigé d'Exercices</option>
-                            <option value="Corrigé Type Bac">🎯 Corrigé Type Bac</option>
-                        </select>
-                        <input type="file" id="cat-doc-file" accept=".pdf,image/*" required class="p-2 bg-stone-950 border rounded-xl text-xs text-white">
-                    </div>
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier et Notifier</button>
-                </form>
-                <div class="space-y-2">
-                    <h4 class="font-bold text-amber-300">Documents actuels (${sheets.length})</h4>
-                    ${sheets.map((d, idx) => `
-                        <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center gap-2">
-                            <div>
-                                <span class="font-bold text-white">${d.title}</span>
-                                <span class="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded-lg">${d.category || 'Fiche de Révision'}</span>
-                            </div>
-                            <button onclick="adminDeleteDoc(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-6 text-white"><h3 class="font-bold text-amber-300 text-sm">Publication de Documents & Corrigés</h3><form onsubmit="adminUploadCategorizedDoc(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3"><input type="text" id="cat-doc-title" required placeholder="Titre..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white"><div class="grid grid-cols-1 md:grid-cols-2 gap-2"><select id="cat-doc-type" required class="p-2.5 bg-stone-950 border rounded-xl text-white"><option value="Fiche de Révision">Fiche de Révision</option><option value="Sujet Type Bac">Sujet Type Bac</option><option value="Fiche d'Exercices">Fiche d'Exercices</option><option value="Corrigé d'Exercices">Corrigé d'Exercices</option><option value="Corrigé Type Bac">Corrigé Type Bac</option></select><input type="file" id="cat-doc-file" accept=".pdf,image/*" required class="p-2 bg-stone-950 border rounded-xl text-xs text-white"></div><button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier</button></form><div class="space-y-2">${sheets.map((d, idx) => `<div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center"><div><span class="font-bold">${d.title}</span> <span class="ml-2 px-2 py-0.5 bg-amber-500/20 text-amber-400 text-[10px] font-bold rounded">${d.category}</span></div><button onclick="adminDeleteDoc(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded"><i class="fa-solid fa-trash"></i></button></div>`).join('')}</div></div>`;
         }
 
         async function adminUploadCategorizedDoc(e) {
             e.preventDefault();
-            let title = document.getElementById('cat-doc-title').value;
-            let category = document.getElementById('cat-doc-type').value;
-            let file = document.getElementById('cat-doc-file').files[0];
+            let title = document.getElementById('cat-doc-title').value, category = document.getElementById('cat-doc-type').value, file = document.getElementById('cat-doc-file').files[0];
             if (file) {
                 let reader = new FileReader();
                 reader.onload = async (ev) => {
                     let sheets = DB.get('revision_sheets') || [];
-                    sheets.push({ title, category, fileData: ev.target.result, fileType: file.type, date: new Date().toLocaleDateString() });
+                    sheets.push({ title, category, fileData: ev.target.result, fileType: file.type });
                     await DB.set('revision_sheets', sheets);
-                    showToast("Document publié !", `Catégorie : ${category}`);
-                    await pushNotification("Nouveau Document !", `[${category}] ${title} est disponible.`);
+                    showToast("Publié !", "");
                     render();
                 };
                 reader.readAsDataURL(file);
@@ -1287,7 +970,6 @@
         }
 
         async function adminDeleteDoc(idx) {
-            if (!confirm("Supprimer ce document ?")) return;
             let sheets = DB.get('revision_sheets') || [];
             sheets.splice(idx, 1);
             await DB.set('revision_sheets', sheets);
@@ -1295,98 +977,33 @@
         }
 
         function renderAdminPolls() {
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300 text-sm">Créer un Sondage Éclair</h3>
-                <form onsubmit="adminCreatePoll(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
-                    <input type="text" id="poll-q" required placeholder="Question du sondage..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    <div id="poll-options-container" class="space-y-2">
-                        <input type="text" placeholder="Option 1" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required>
-                        <input type="text" placeholder="Option 2" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required>
-                    </div>
-                    <button type="button" onclick="addPollOptionField()" class="px-3 py-1.5 bg-stone-800 text-amber-300 rounded-xl font-bold text-xs">+ Ajouter une option</button>
-                    <div class="pt-2">
-                        <label class="block text-xs font-bold text-amber-200 mb-1">Date et heure d'expiration :</label>
-                        <input type="datetime-local" id="poll-expire" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    </div>
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl mt-2">Lancer le Sondage & Notifier</button>
-                </form>
-            </div>`;
-        }
-
-        function addPollOptionField() {
-            let container = document.getElementById('poll-options-container');
-            let inp = document.createElement('input');
-            inp.type = 'text';
-            inp.placeholder = `Option ${container.children.length + 1}`;
-            inp.className = 'poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white';
-            container.appendChild(inp);
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4 text-white"><h3 class="font-bold text-amber-300">Sondage Éclair</h3><form onsubmit="adminCreatePoll(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3"><input type="text" id="poll-q" required placeholder="Question..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white"><div id="poll-options-container" class="space-y-2"><input type="text" placeholder="Option 1" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required><input type="text" placeholder="Option 2" class="poll-opt w-full p-2 bg-stone-950 border rounded-xl text-white" required></div><button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Lancer</button></form></div>`;
         }
 
         async function adminCreatePoll(e) {
             e.preventDefault();
-            let question = document.getElementById('poll-q').value;
-            let options = Array.from(document.querySelectorAll('.poll-opt')).map(i => i.value.trim()).filter(Boolean);
-            let expiresAt = document.getElementById('poll-expire').value;
+            let question = document.getElementById('poll-q').value, options = Array.from(document.querySelectorAll('.poll-opt')).map(i => i.value).filter(Boolean);
             let polls = DB.get('polls') || [];
-            polls.unshift({ id: Date.now(), question, options, results: {}, voters: [], expiresAt });
+            polls.unshift({ id: Date.now(), question, options, results: {}, voters: [] });
             await DB.set('polls', polls);
-            showToast("Sondage lancé !", "Accessible à la classe.");
-            await pushNotification("Nouveau Sondage !", `Répondez au sondage : "${question}"`);
+            showToast("Sondage lancé !", "");
             render();
         }
 
         function renderAdminFormations() {
             let list = DB.get('formations') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300 text-sm">Gestion des Formations Post-Bac</h3>
-                <form onsubmit="adminAddFormation(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3">
-                    <h4 class="font-bold text-amber-400">Ajouter une formation</h4>
-                    <input type="text" id="fm-title" required placeholder="Intitulé de la formation (ex: BUT Carrières Juridiques)..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                        <input type="text" id="fm-est" required placeholder="Établissement..." class="p-2.5 bg-stone-950 border rounded-xl text-white">
-                        <input type="text" id="fm-city" required placeholder="Ville..." class="p-2.5 bg-stone-950 border rounded-xl text-white">
-                        <select id="fm-type" class="p-2.5 bg-stone-950 border rounded-xl text-amber-100">
-                            <option value="Initial">Initial</option>
-                            <option value="Alternance">Alternance</option>
-                            <option value="Apprentissage">Apprentissage</option>
-                        </select>
-                    </div>
-                    <textarea id="fm-desc" required placeholder="Description de la formation..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white h-20 resize-none"></textarea>
-                    <input type="url" id="fm-link" placeholder="Lien du site web officiel (https://...)" class="w-full p-2.5 bg-stone-950 border rounded-xl text-white">
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Ajouter la formation</button>
-                </form>
-                <div class="space-y-2">
-                    ${list.map((f, idx) => `
-                        <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center flex-wrap gap-2">
-                            <div>
-                                <span class="font-bold text-white">${f.title}</span> <span class="text-amber-400">(${f.establishment} - ${f.city})</span>
-                                <div class="text-[10px] text-amber-200/60">Rythme : ${f.type}</div>
-                            </div>
-                            <button onclick="adminDeleteFormation(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded font-bold"><i class="fa-solid fa-trash"></i> Supprimer</button>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4 text-white"><h3 class="font-bold text-amber-300">Formations Post-Bac</h3><form onsubmit="adminAddFormation(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-3"><input type="text" id="fm-title" required placeholder="Intitulé..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white"><div class="grid grid-cols-1 md:grid-cols-3 gap-2"><input type="text" id="fm-est" required placeholder="Établissement..." class="p-2.5 bg-stone-950 border rounded-xl text-white"><input type="text" id="fm-city" required placeholder="Ville..." class="p-2.5 bg-stone-950 border rounded-xl text-white"><select id="fm-type" class="p-2.5 bg-stone-950 border rounded-xl text-white"><option value="Initial">Initial</option><option value="Alternance">Alternance</option><option value="Apprentissage">Apprentissage</option></select></div><textarea id="fm-desc" required placeholder="Description..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-white h-20"></textarea><input type="url" id="fm-link" placeholder="Lien web (https://...)" class="w-full p-2.5 bg-stone-950 border rounded-xl text-white"><button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Ajouter</button></form><div class="space-y-2">${list.map((f, idx) => `<div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center"><div><span class="font-bold">${f.title}</span> (${f.establishment} - ${f.city})</div><button onclick="adminDeleteFormation(${idx})" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded"><i class="fa-solid fa-trash"></i></button></div>`).join('')}</div></div>`;
         }
 
         async function adminAddFormation(e) {
             e.preventDefault();
             let list = DB.get('formations') || [];
-            list.push({
-                title: document.getElementById('fm-title').value,
-                establishment: document.getElementById('fm-est').value,
-                city: document.getElementById('fm-city').value,
-                type: document.getElementById('fm-type').value,
-                desc: document.getElementById('fm-desc').value,
-                link: document.getElementById('fm-link').value
-            });
+            list.push({ title: document.getElementById('fm-title').value, establishment: document.getElementById('fm-est').value, city: document.getElementById('fm-city').value, type: document.getElementById('fm-type').value, desc: document.getElementById('fm-desc').value, link: document.getElementById('fm-link').value });
             await DB.set('formations', list);
-            showToast("Succès", "Formation ajoutée !");
             render();
         }
 
         async function adminDeleteFormation(idx) {
-            if (!confirm("Supprimer cette formation ?")) return;
             let list = DB.get('formations') || [];
             list.splice(idx, 1);
             await DB.set('formations', list);
@@ -1395,30 +1012,7 @@
 
         function renderAdminAppreciations() {
             let users = DB.get('users') || [], allApps = DB.get('appreciations') || {};
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300 text-sm">Gestion des Appréciations Trimestrielles</h3>
-                <div class="space-y-3">
-                    ${users.map(u => {
-                        let app = allApps[u.username] || { t1: '', t2: '', t3: '', published: false };
-                        return `
-                            <div class="p-4 bg-stone-900 border rounded-2xl space-y-2">
-                                <div class="flex justify-between items-center">
-                                    <span class="font-bold text-amber-300">${u.pseudo || u.username} (${u.realName || u.username})</span>
-                                    <label class="flex items-center gap-2 cursor-pointer">
-                                        <input type="checkbox" ${app.published ? 'checked' : ''} onchange="toggleAppPub('${u.username}', this.checked)" class="w-4 h-4 accent-amber-600">
-                                        <span class="text-xs font-bold">Publier pour l'élève</span>
-                                    </label>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
-                                    <input type="text" id="app_t1_${u.username}" value="${app.t1}" placeholder="Trimestre 1..." oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs">
-                                    <input type="text" id="app_t2_${u.username}" value="${app.t2}" placeholder="Trimestre 2..." oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs">
-                                    <input type="text" id="app_t3_${u.username}" value="${app.t3}" placeholder="Trimestre 3..." oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs">
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>`;
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-4 text-white"><h3 class="font-bold text-amber-300">Appréciations</h3><div class="space-y-3">${users.map(u => { let app = allApps[u.username] || { t1: '', t2: '', t3: '', published: false }; return `<div class="p-4 bg-stone-900 border rounded-2xl space-y-2"><div class="flex justify-between items-center"><span class="font-bold">${u.pseudo || u.username}</span><label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" ${app.published ? 'checked' : ''} onchange="toggleAppPub('${u.username}', this.checked)" class="w-4 h-4 accent-amber-600"><span class="text-xs font-bold">Publier</span></label></div><div class="grid grid-cols-1 md:grid-cols-3 gap-2"><input type="text" id="app_t1_${u.username}" value="${app.t1}" placeholder="T1" oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs"><input type="text" id="app_t2_${u.username}" value="${app.t2}" placeholder="T2" oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs"><input type="text" id="app_t3_${u.username}" value="${app.t3}" placeholder="T3" oninput="saveAppInput('${u.username}')" class="p-2 bg-stone-950 border rounded-xl text-white text-xs"></div></div>`; }).join('')}</div></div>`;
         }
 
         async function saveAppInput(username) {
@@ -1435,134 +1029,64 @@
             if (!allApps[username]) allApps[username] = { t1: '', t2: '', t3: '', published: false };
             allApps[username].published = published;
             await DB.set('appreciations', allApps);
-            showToast("Mis à jour", "Statut des appréciations modifié.");
         }
 
         function renderAdminThemeFull() {
             let t = DB.get('site_theme') || {};
-            let countdown = DB.get('countdown') || { title: '', date: '' };
-            let currentQr = DB.get('home_qr_image') || '';
-
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <h3 class="font-bold text-amber-300">Personnalisation du Compte à rebours</h3>
-                <form onsubmit="saveCountdownAdmin(event)" class="space-y-2">
-                    <input type="text" id="cd-title" value="${countdown.title}" required placeholder="Titre..." class="w-full p-2 bg-stone-900 border rounded-xl text-white">
-                    <input type="datetime-local" id="cd-date" value="${countdown.date}" required class="w-full p-2 bg-stone-900 border rounded-xl text-white">
-                    <button type="submit" class="dyn-btn w-full py-2 text-white font-bold rounded-xl">Mettre à jour le compteur</button>
-                </form>
-
-                <div class="border-t border-amber-900/40 pt-4 space-y-3">
-                    <h3 class="font-bold text-amber-300">Gestion du QR Code (Accueil)</h3>
-                    ${currentQr ? `<img src="${currentQr}" width="80" class="rounded-lg"/>` : ''}
-                    <div class="flex gap-2 items-center">
-                        <input type="file" id="admin-home-qr-file" accept="image/*" class="p-2 bg-stone-900 border rounded-xl text-xs flex-1 text-white">
-                        <button onclick="saveAdminHomeQr()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Mettre à jour</button>
-                    </div>
-                </div>
+            return `<div class="dyn-card border p-6 rounded-3xl space-y-6 text-white">
+                <h3 class="font-bold text-amber-300">Thème & Saisons</h3>
+                <select id="theme-preset" onchange="saveThemePreset(this.value)" class="w-full p-2 bg-stone-900 border rounded-xl text-white">
+                    <option value="standard" ${t.preset==='standard'?'selected':''}>Standard</option>
+                    <option value="noel" ${t.preset==='noel'?'selected':''}>🎄 Noël (Cadeaux)</option>
+                    <option value="halloween" ${t.preset==='halloween'?'selected':''}>🎃 Halloween (Citrouilles)</option>
+                    <option value="paques" ${t.preset==='paques'?'selected':''}>🥚 Pâques (Œufs)</option>
+                    <option value="automne" ${t.preset==='automne'?'selected':''}>🍂 Automne (Feuilles)</option>
+                </select>
 
                 <div class="border-t border-amber-900/40 pt-4 space-y-3">
-                    <h3 class="font-bold text-amber-300">Thème & Saisons / Fêtes</h3>
-                    <select id="theme-preset" onchange="saveThemePreset(this.value)" class="w-full p-2 bg-stone-900 border rounded-xl text-white">
-                        <option value="standard" ${t.preset==='standard'?'selected':''}>Standard (Doré)</option>
-                        <option value="noel" ${t.preset==='noel'?'selected':''}>🎄 Noël (Cadeaux qui tombent)</option>
-                        <option value="halloween" ${t.preset==='halloween'?'selected':''}>🎃 Halloween (Citrouilles)</option>
-                        <option value="paques" ${t.preset==='paques'?'selected':''}>🥚 Pâques (Œufs)</option>
-                        <option value="automne" ${t.preset==='automne'?'selected':''}>🍂 Automne (Feuilles)</option>
-                        <option value="hiver" ${t.preset==='hiver'?'selected':''}>❄️ Hiver (Flocons)</option>
-                        <option value="printemps" ${t.preset==='printemps'?'selected':''}>🌸 Printemps (Fleurs)</option>
-                        <option value="ete" ${t.preset==='ete'?'selected':''}>☀️ Été (Soleils)</option>
-                    </select>
-                </div>
-
-                <div class="border-t border-amber-900/40 pt-4 space-y-3">
-                    <h3 class="font-bold text-amber-300">Upload de médias personnalisés (Fond & Audio)</h3>
+                    <h3 class="font-bold text-amber-300">Configuration App Mobile & Procédure</h3>
                     <div class="space-y-2">
-                        <label class="block text-xs font-bold">Image ou Vidéo de fond :</label>
-                        <input type="file" id="admin-bg-media" accept="image/*,video/*" class="w-full p-2 bg-stone-900 border rounded-xl text-xs text-white">
-                        <button onclick="uploadBgMedia()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Appliquer le média de fond</button>
+                        <label class="block text-xs font-bold">Fichier de l'application (.apk, .zip, etc.) :</label>
+                        <input type="file" id="admin-app-file" class="w-full p-2 bg-stone-900 border rounded-xl text-xs text-white">
+                        <button onclick="uploadAppFile()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Uploader le fichier App</button>
                     </div>
                     <div class="space-y-2 pt-2">
-                        <label class="block text-xs font-bold">Fichier Audio de fond (Musique en boucle) :</label>
-                        <input type="file" id="admin-bg-audio" accept="audio/*" class="w-full p-2 bg-stone-900 border rounded-xl text-xs text-white">
-                        <button onclick="uploadBgAudio()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Appliquer l'audio de fond</button>
-                        ${t.bgAudio ? `<button onclick="removeBgAudio()" class="px-3 py-1 bg-red-600/30 text-red-300 rounded-lg text-xs font-bold ml-2">Couper l'audio</button>` : ''}
+                        <label class="block text-xs font-bold">Procédure d'installation (texte affiché dans la modale) :</label>
+                        <textarea id="admin-app-proc" class="w-full p-3 bg-stone-900 border rounded-xl text-white h-24 text-xs">${DB.get('app_install_procedure') || ''}</textarea>
+                        <button onclick="saveAppProc()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Enregistrer la procédure</button>
                     </div>
                 </div>
             </div>`;
-        }
-
-        async function saveCountdownAdmin(e) {
-            e.preventDefault();
-            let title = document.getElementById('cd-title').value;
-            let date = document.getElementById('cd-date').value;
-            await DB.set('countdown', { title, date });
-            showToast("Succès", "Compte à rebours mis à jour !");
-            render();
         }
 
         async function saveThemePreset(preset) {
             let t = DB.get('site_theme') || {};
             t.preset = preset;
             await DB.set('site_theme', t);
-            showToast("Thème mis à jour !", "");
             render();
         }
 
-        async function uploadBgMedia() {
-            let fileInput = document.getElementById('admin-bg-media');
-            if (fileInput.files && fileInput.files[0]) {
+        async function uploadAppFile() {
+            let file = document.getElementById('admin-app-file').files[0];
+            if (file) {
                 let reader = new FileReader();
                 reader.onload = async (ev) => {
-                    let t = DB.get('site_theme') || {};
-                    t.bgMedia = ev.target.result;
-                    await DB.set('site_theme', t);
-                    showToast("Succès", "Fond d'écran mis à jour !");
-                    render();
+                    await DB.set('app_download_file', ev.target.result);
+                    showToast("Fichier App uploadé !", "");
                 };
-                reader.readAsDataURL(fileInput.files[0]);
+                reader.readAsDataURL(file);
             }
         }
 
-        async function uploadBgAudio() {
-            let fileInput = document.getElementById('admin-bg-audio');
-            if (fileInput.files && fileInput.files[0]) {
-                let reader = new FileReader();
-                reader.onload = async (ev) => {
-                    let t = DB.get('site_theme') || {};
-                    t.bgAudio = ev.target.result;
-                    await DB.set('site_theme', t);
-                    showToast("Succès", "Audio de fond activé !");
-                    render();
-                };
-                reader.readAsDataURL(fileInput.files[0]);
-            }
-        }
-
-        async function removeBgAudio() {
-            let t = DB.get('site_theme') || {};
-            t.bgAudio = '';
-            await DB.set('site_theme', t);
-            showToast("Audio coupé", "");
-            render();
-        }
-
-        async function saveAdminHomeQr() {
-            let fileInput = document.getElementById('admin-home-qr-file');
-            if (fileInput.files && fileInput.files[0]) {
-                let reader = new FileReader();
-                reader.onload = async (ev) => {
-                    await DB.set('home_qr_image', ev.target.result);
-                    showToast("Succès", "QR code mis à jour !");
-                    render();
-                };
-                reader.readAsDataURL(fileInput.files[0]);
-            }
+        async function saveAppProc() {
+            let text = document.getElementById('admin-app-proc').value;
+            await DB.set('app_install_procedure', text);
+            showToast("Procédure enregistrée !", "");
         }
 
         async function handleLogin(e) {
             e.preventDefault();
-            let u = document.getElementById('l-user').value.trim();
-            let p = document.getElementById('l-pass').value.trim();
+            let u = document.getElementById('l-user').value.trim(), p = document.getElementById('l-pass').value.trim();
             let user = (DB.get('users') || []).find(x => x.username === u && x.password === p);
             if (user) { sessionStorage.setItem('leqg_current_user', JSON.stringify(user)); render(); }
             else { alert("Identifiant ou mot de passe incorrect"); }
@@ -1571,7 +1095,7 @@
         async function saveSetup(e) {
             e.preventDefault();
             let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
-            if(idx !== -1) {
+            if (idx !== -1) {
                 if (user.role === 'admin') {
                     let newUsername = document.getElementById('s-username').value.trim();
                     if (newUsername) users[idx].username = newUsername;
@@ -1579,6 +1103,7 @@
                 users[idx].realName = document.getElementById('s-lastname').value;
                 users[idx].birthDate = document.getElementById('s-birth').value;
                 users[idx].password = document.getElementById('s-pass').value;
+                users[idx].pseudo = document.getElementById('s-pseudo').value;
                 users[idx].mustChangePass = false;
                 await DB.set('users', users);
                 sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
