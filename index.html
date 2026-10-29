@@ -14,19 +14,32 @@
     <style>
         :root {
             --custom-btn-bg: #d97706;
-            --custom-card-bg: rgba(10, 10, 10, 0.9);
+            --custom-card-bg: rgba(12, 12, 12, 0.95);
             --custom-border-color: rgba(245, 158, 11, 0.4);
         }
         .dyn-btn { background-color: var(--custom-btn-bg) !important; }
         .dyn-btn:hover { filter: brightness(1.15); }
         .dyn-card { background-color: var(--custom-card-bg) !important; border-color: var(--custom-border-color) !important; }
+
+        @keyframes fall {
+            0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(105vh) rotate(360deg); opacity: 0.2; }
+        }
+        .seasonal-particle {
+            position: fixed;
+            top: -5vh;
+            z-index: 1;
+            pointer-events: none;
+            user-select: none;
+            animation: fall linear infinite;
+        }
     </style>
 </head>
-<body id="body-theme" class="bg-stone-950 text-amber-50 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden">
+<body id="body-theme" class="bg-stone-950 text-amber-50 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden transition-all duration-500">
 
-    <div id="custom-bg-container" class="fixed inset-0 z-0 pointer-events-none overflow-hidden"></div>
+    <div id="seasonal-particles-container" class="fixed inset-0 pointer-events-none z-0 overflow-hidden"></div>
 
-    <div id="app" class="h-full flex flex-col flex-1 bg-black/60 z-10 relative overflow-hidden">
+    <div id="app" class="h-full flex flex-col flex-1 bg-black/75 z-10 relative overflow-hidden">
         <div class="flex-1 flex items-center justify-center p-4 text-center">
             <div class="space-y-3">
                 <div class="w-10 h-10 border-4 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
@@ -73,9 +86,6 @@
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
 
-        let currentGameId = null;
-        let currentGameScore = 0;
-
         let cloudData = {
             users: [
                 { username: 'Charlesadmin', password: 'tln20', role: 'admin', status: 'active', mustChangePass: true, email: 'charlescusson27@gmail.com', avatarSkin: '#fca5a5', avatarAccessory: '👑', avatarHair: '🧢', pseudo: 'Charles (Admin)', realName: 'Charles Cusson', birthDate: '2009-03-26' }
@@ -94,9 +104,10 @@
             personal_notes: {},
             app_notifications: [],
             moods: {},
+            user_scores: {},
             home_qr_image: '',
             hidden_tabs: [],
-            site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)' },
+            site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(12, 12, 12, 0.95)', borderColor: 'rgba(245, 158, 11, 0.4)', bgUrl: '' },
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' }
         };
 
@@ -116,32 +127,18 @@
             chatMode: 'general',
             targetUser: null,
             adminSub: 'users',
+            activeConvFilter: null,
             gameFilter: 'all',
             activeDeckId: null,
-            aiMessages: [{ sender: 'ai', text: 'Bonjour ! Je suis ton Tuteur IA spécialisé en Droit, Économie, Gestion et Commerce. Pose-moi tes questions de révision !' }]
+            activeNoteId: null,
+            aiMessages: [{ sender: 'ai', text: 'Bonjour ! Je suis ton Tuteur IA spécialisé en Droit, Économie, Gestion et Commerce. Pose-moi tes questions de révision pour le Bac Pro MCV !' }]
         };
 
         const PLAYABLE_GAMES = [
-            { id: 'chef_rayon', name: 'Chef de Rayon MCV', cat: 'ludo', icon: 'fa-boxes-packing', desc: 'Place les articles au bon niveau du linéaire.', rules: '<b>But :</b> Implanter les produits selon le merchandising.<br><b>Règle :</b> 1ers prix au sol, produits phares au niveau des yeux.', type: 'chef_rayon' },
-            { id: 'quiz_droit', name: 'Le Démineur Juridique', cat: 'ludo', icon: 'fa-scale-balanced', desc: 'Identifie les clauses légales vs abusives.', rules: '<b>But :</b> Analyser des clauses de contrats de travail.<br><b>Règle :</b> Détermine si la clause respecte la loi.', type: 'quiz' },
-            { id: 'juste_prix', name: 'Calculateur de Marge', cat: 'ludo', icon: 'fa-calculator', desc: 'Calcule les indicateurs commerciaux.', rules: '<b>But :</b> Maîtriser les prix TTC et marges.<br><b>Règle :</b> Choisis la bonne réponse mathématique.', type: 'quiz' },
-            { id: 'marketing_4p', name: 'Mastermind Marketing Mix', cat: 'ludo', icon: 'fa-bullseye', desc: 'Associer les actions au bon P des 4P.', rules: '<b>But :</b> Classer dans les 4P.<br><b>Règle :</b> Associe l\'action au bon pilier.', type: 'quiz' },
-            { id: 'vocab_anglais', name: 'English Commercial Quiz', cat: 'ludo', icon: 'fa-language', desc: 'Traduire les termes du e-commerce.', rules: '<b>But :</b> Valider le vocabulaire pro anglophone.<br><b>Règle :</b> Choisis la bonne traduction.', type: 'quiz' },
-            { id: 'gestion_stock', name: 'Alerte Rupture de Stock', cat: 'ludo', icon: 'fa-warehouse', desc: 'Vérifie si le stock de sécurité est atteint.', rules: '<b>But :</b> Éviter les ruptures de stock.<br><b>Règle :</b> Décide si une réappro s\'impose.', type: 'quiz' },
-            { id: 'relation_client', name: 'Simulateur d\'Objection', cat: 'ludo', icon: 'fa-comments', desc: 'Traiter les objections clients en magasin.', rules: '<b>But :</b> Décrocher la vente face à l\'hésitation.<br><b>Règle :</b> Choisis la bonne méthode de réfutation.', type: 'quiz' },
-            { id: 'securite_mag', name: 'Auditeur Sécurité & Vol', cat: 'ludo', icon: 'fa-shield-halved', desc: 'Repérer les failles de démarque inconnue.', rules: '<b>But :</b> Réduire la démarque.<br><b>Règle :</b> Repère l\'erreur en rayon.', type: 'quiz' },
-            { id: 'eco_inflation', name: 'Superviseur Pouvoir d\'Achat', cat: 'ludo', icon: 'fa-chart-line', desc: 'Régler l\'impact prix sur l\'inflation.', rules: '<b>But :</b> Comprendre le pouvoir d\'achat.<br><b>Règle :</b> Réponds aux questions éco.', type: 'quiz' },
-            { id: 'code_travail', name: 'Expert Contrat de Travail', cat: 'ludo', icon: 'fa-file-signature', desc: 'Valider la conformité des contrats.', rules: '<b>But :</b> Valider les durées légales.<br><b>Règle :</b> Contrôle la conformité.', type: 'quiz' },
-            { id: 'clicker_qg', name: 'Clicker du Vendeur', cat: 'chill', icon: 'fa-hand-pointer', desc: 'Clique le plus vite possible !', rules: '<b>But :</b> Encaisser un max d\'articles.<br><b>Règle :</b> Clique pour marquer des points.', type: 'clicker' },
-            { id: 'test_reflexe', name: 'Chrono Réflexes Flash', cat: 'chill', icon: 'fa-bolt', desc: 'Clique quand la couleur passe au vert !', rules: '<b>But :</b> Tester ta vitesse de réaction.<br><b>Règle :</b> Clique dès que ça passe au vert.', type: 'reflex' },
-            { id: 'memory_cards', name: 'Memory des Marques', cat: 'chill', icon: 'fa-clone', desc: 'Retrouve les cartes identiques.', rules: '<b>But :</b> Trouver les paires.<br><b>Règle :</b> Retourne les cartes 2 par 2.', type: 'memory' },
-            { id: 'juste_nombre', name: 'Devine le Chiffre Mystère', cat: 'chill', icon: 'fa-hashtag', desc: 'Trouve le nombre caché entre 1 et 100.', rules: '<b>But :</b> Trouver le chiffre.<br><b>Règle :</b> Ajuste selon les indices.', type: 'guess' },
-            { id: 'pierre_feuille', name: 'Chifoumi Tactique', cat: 'chill', icon: 'fa-hand-back-fist', desc: 'Bats l\'ordinateur à Pierre-Papier-Ciseaux.', rules: '<b>But :</b> Gagner le duel.<br><b>Règle :</b> Choisis ton coup.', type: 'chifoumi' },
-            { id: 'des_chance', name: 'Lancer de Dés 777', cat: 'chill', icon: 'fa-dice', desc: 'Tente de faire un max de points.', rules: '<b>But :</b> Faire un double 6.<br><b>Règle :</b> Relance les dés.', type: 'dice' },
-            { id: 'fast_calc', name: 'Calcul Rapidou', cat: 'chill', icon: 'fa-plus-minus', desc: 'Résous des calculs sous pression.', rules: '<b>But :</b> Calculer vite.<br><b>Règle :</b> Réponds aux opérations.', type: 'fast_math' },
-            { id: 'pendu_mcv', name: 'Mot Mystère de Pause', cat: 'chill', icon: 'fa-font', desc: 'Devine le mot caché lettre par lettre.', rules: '<b>But :</b> Trouver le mot.<br><b>Règle :</b> Choisis les bonnes lettres.', type: 'pendu' },
-            { id: 'pile_face', name: 'Pile ou Face Double', cat: 'chill', icon: 'fa-coins', desc: 'Parie sur la pièce.', rules: '<b>But :</b> Deviner la face.<br><b>Règle :</b> Choisis Pile ou Face.', type: 'coin' },
-            { id: 'morpion_duo', name: 'Morpion de Pause', cat: 'chill', icon: 'fa-xmark', desc: 'Aligner 3 symboles.', rules: '<b>But :</b> Aligner 3 pions.<br><b>Règle :</b> Aligne tes symboles.', type: 'morpion' }
+            { id: 'chef_rayon', name: 'Chef de Rayon MCV', cat: 'ludo', icon: 'fa-boxes-packing', desc: 'Implantation des produits selon le merchandising.', rules: '<b>But :</b> Placer chaque article au bon niveau du linéaire.', type: 'chef_rayon' },
+            { id: 'demineur_juridique', name: 'Démineur Juridique', cat: 'ludo', icon: 'fa-scale-balanced', desc: 'Identifier les clauses légales vs abusives.', rules: '<b>But :</b> Analyser des clauses de contrats de travail.', type: 'quiz' },
+            { id: 'calcul_marge', name: 'Calculateur de Marge', cat: 'ludo', icon: 'fa-calculator', desc: 'Maîtriser les indicateurs commerciaux.', rules: '<b>But :</b> Calculer prix de vente, coût d\'achat et marge.', type: 'quiz' },
+            { id: 'clicker_caisse', name: 'Clicker du Vendeur Rapide', cat: 'chill', icon: 'fa-hand-pointer', desc: 'Encaisse le maximum d\'articles en 15 secondes !', rules: '<b>But :</b> Cliquer frénétiquement pour encaisser.', type: 'clicker' }
         ];
 
         async function init() {
@@ -167,7 +164,7 @@
 
         function checkBirthdays() {
             let users = DB.get('users') || [];
-            let today = new Date().toISOString().slice(5, 10); // MM-DD
+            let today = new Date().toISOString().slice(5, 10);
             let checkedKey = 'leqg_bday_checked_' + today;
             if (sessionStorage.getItem(checkedKey)) return;
 
@@ -181,10 +178,42 @@
         }
 
         function applyTheme() {
-            let t = DB.get('site_theme') || { btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)' };
+            let t = DB.get('site_theme') || { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(12, 12, 12, 0.95)', borderColor: 'rgba(245, 158, 11, 0.4)' };
             document.documentElement.style.setProperty('--custom-btn-bg', t.btnColor);
             document.documentElement.style.setProperty('--custom-card-bg', t.cardBg);
             document.documentElement.style.setProperty('--custom-border-color', t.borderColor);
+
+            let body = document.getElementById('body-theme');
+            if (t.bgUrl) body.style.backgroundImage = `url('${t.bgUrl}')`;
+            else body.style.backgroundImage = 'none';
+
+            generateSeasonalParticles(t.preset);
+        }
+
+        function generateSeasonalParticles(preset) {
+            let container = document.getElementById('seasonal-particles-container');
+            container.innerHTML = '';
+            let items = [];
+
+            if (preset === 'noel') items = ['🎄', '🎁', '❄️', '🔴', '⛄'];
+            else if (preset === 'halloween') items = ['🎃', '🧙‍♀️', '💀', '🦇', '👻'];
+            else if (preset === 'ete') items = ['🏖️', '☀️', '🌊', '🍦', '🌴'];
+            else if (preset === 'automne') items = ['🍂', '🍁', '🌰', '🌾'];
+            else if (preset === 'hiver') items = ['❄️', '🌨️', '🧊'];
+            else if (preset === 'printemps') items = ['🌸', '🌺', '🌼', '🥚', '🦋'];
+
+            if (items.length === 0) return;
+
+            for (let i = 0; i < 25; i++) {
+                let el = document.createElement('div');
+                el.className = 'seasonal-particle';
+                el.textContent = items[Math.floor(Math.random() * items.length)];
+                el.style.left = Math.random() * 100 + 'vw';
+                el.style.animationDuration = (5 + Math.random() * 7) + 's';
+                el.style.animationDelay = (Math.random() * 5) + 's';
+                el.style.fontSize = (16 + Math.random() * 20) + 'px';
+                container.appendChild(el);
+            }
         }
 
         function getCurrentUser() { let u = sessionStorage.getItem('leqg_current_user'); return u ? JSON.parse(u) : null; }
@@ -204,7 +233,7 @@
             document.getElementById('toast-title').textContent = title;
             document.getElementById('toast-msg').textContent = msg;
             document.getElementById('global-notification-toast').classList.remove('hidden');
-            setTimeout(() => document.getElementById('global-notification-toast').classList.add('hidden'), 5000);
+            setTimeout(() => document.getElementById('global-notification-toast').classList.add('hidden'), 4000);
         }
 
         function toggleModal(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
@@ -277,7 +306,7 @@
             let unreadCount = notifs.filter(n => n.target === 'all' || n.target === user.username).length;
 
             return `
-                <header class="bg-stone-950/80 border-b border-amber-900/40 px-4 py-3 flex justify-between items-center backdrop-blur-md">
+                <header class="bg-stone-950/90 border-b border-amber-900/40 px-4 py-3 flex justify-between items-center">
                     <div class="flex items-center gap-3">
                         <button onclick="state.sidebar=!state.sidebar;render()" class="p-2 bg-stone-900 text-amber-100 rounded-xl"><i class="fa-solid fa-bars"></i></button>
                         <div class="flex items-center gap-2">
@@ -299,23 +328,23 @@
                 <div class="flex-1 flex overflow-hidden relative">
                     <aside class="fixed inset-y-0 left-0 z-30 w-64 bg-stone-950/95 border-r transform ${state.sidebar ? 'translate-x-0' : '-translate-x-full'} transition-transform flex flex-col p-4 pt-16 space-y-1 text-xs overflow-y-auto">
                         ${!hidden.includes('home') ? sbBtn('home', 'Accueil & QR Code', 'house') : ''}
+                        ${!hidden.includes('appreciations') ? sbBtn('appreciations', 'Mes Appréciations', 'file-contract') : ''}
                         ${!hidden.includes('mood') ? sbBtn('mood', 'Mur des Humeurs', 'face-smile') : ''}
                         ${!hidden.includes('notifs') ? sbBtn('notifs', 'Centre Notifications', 'bell') : ''}
                         ${!hidden.includes('polls') ? sbBtn('polls', 'Sondages en Direct', 'square-poll-vertical') : ''}
-                        ${!hidden.includes('games') ? sbBtn('games', 'Espace Arcade & Jeux (20)', 'gamepad') : ''}
-                        ${!hidden.includes('quizzes') ? sbBtn('quizzes', 'Quiz & Évaluations', 'brain') : ''}
+                        ${!hidden.includes('games') ? sbBtn('games', 'Espace Arcade & Jeux', 'gamepad') : ''}
                         ${!hidden.includes('revisions') ? sbBtn('revisions', 'Fiches de Révision', 'book-open') : ''}
                         ${!hidden.includes('exams') ? sbBtn('exams', 'Sujets & Corrigés Bac', 'file-pdf') : ''}
                         ${!hidden.includes('formations') ? sbBtn('formations', 'Orientation & Post-Bac', 'graduation-cap') : ''}
                         ${!hidden.includes('ideas') ? sbBtn('ideas', 'Boîte à Idées (Vote 48h)', 'lightbulb') : ''}
                         ${!hidden.includes('flashcards') ? sbBtn('flashcards', 'Flashcards Mémoire', 'clone') : ''}
                         ${!hidden.includes('notes') ? sbBtn('notes', 'Traitement de Texte (Notes)', 'file-lines') : ''}
-                        ${!hidden.includes('bac_sim') ? sbBtn('bac_sim', 'Simulateur Bac & Notes', 'calculator') : ''}
+                        ${!hidden.includes('bac_sim') ? sbBtn('bac_sim', 'Simulateur Bac Complet', 'calculator') : ''}
                         ${!hidden.includes('ai_tuteur') ? sbBtn('ai_tuteur', 'Tuteur IA', 'robot') : ''}
                         ${!hidden.includes('leaderboard') ? sbBtn('leaderboard', 'Classement Classe', 'trophy') : ''}
                         ${!hidden.includes('chat') ? sbBtn('chat', 'Messagerie & Canal', 'comments') : ''}
                         ${!hidden.includes('tickets') ? sbBtn('tickets', 'Support & Mails', 'envelope') : ''}
-                        ${!hidden.includes('profile') ? sbBtn('profile', 'Mon Profil', 'user-astronaut') : ''}
+                        ${!hidden.includes('profile') ? sbBtn('profile', 'Mon Profil & Avatar', 'user-astronaut') : ''}
                         ${canAccessAdmin ? sbBtn('admin', 'Espace Délégué / Admin', 'user-gear', 'text-amber-400 bg-amber-500/10') : ''}
                     </aside>
                     <main class="flex-1 overflow-y-auto p-4 md:p-6">${renderContent(user)}</main>
@@ -329,13 +358,13 @@
 
         function renderContent(user) {
             if (state.tab === 'home') return renderHome();
+            if (state.tab === 'appreciations') return renderUserAppreciations(user);
             if (state.tab === 'mood') return renderMoodTab(user);
             if (state.tab === 'notifs') return renderNotifsSection(user);
             if (state.tab === 'polls') return renderPollsTab(user);
             if (state.tab === 'games') return renderGamesSection();
-            if (state.tab === 'quizzes') return renderQuizzesTab(user);
             if (state.tab === 'revisions') return renderDocPage('Fiches de Révision', DB.get('revision_sheets') || []);
-            if (state.tab === 'exams') return renderExamsTab();
+            if (state.tab === 'exams') return renderDocPage('Sujets & Corrigés Bac', DB.get('exam_subjects') || []);
             if (state.tab === 'formations') return renderFormationsTab(user);
             if (state.tab === 'ideas') return renderIdeasPage(user);
             if (state.tab === 'flashcards') return renderFlashcardsTab(user);
@@ -370,9 +399,44 @@
 
                 <div class="dyn-card border p-8 space-y-3 rounded-3xl">
                     <h2 class="text-2xl font-black text-white">Bienvenue sur LE QG</h2>
-                    <p class="text-xs text-amber-200/75">Plateforme collaborative de classe 100% synchronisée via Firebase.</p>
+                    <p class="text-xs text-amber-200/75">Plateforme collaborative Terminale Bac Pro MCV.</p>
                 </div>
             </div>`;
+        }
+
+        // --- MUR DES HUMEURS ---
+        function renderMoodTab(user) {
+            let moods = DB.get('moods') || {};
+            let emojis = ['😀', '🚀', '💡', '🔥', '😴', '🧠', '🎯', '☕', '😎', '📚'];
+            return `<div class="max-w-2xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-3 text-center">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-face-smile mr-2"></i>Mur des Humeurs de la Classe</h2>
+                    <p class="text-amber-200/70">Quelle est ton humeur ou ton emoji du jour ?</p>
+                    <div class="flex flex-wrap justify-center gap-2 pt-2">
+                        ${emojis.map(e => `<button onclick="setMood('${e}')" class="p-3 bg-stone-900 border rounded-2xl text-xl hover:scale-110 transition">${e}</button>`).join('')}
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    ${Object.keys(moods).length === 0 ? '<p class="text-amber-200/50 text-center col-span-2">Aucune humeur partagée aujourd\'hui.</p>' : ''}
+                    ${Object.entries(moods).map(([uname, data]) => `
+                        <div class="dyn-card border p-4 rounded-2xl flex items-center gap-3">
+                            <span class="text-3xl">${data.emoji}</span>
+                            <div>
+                                <h4 class="font-bold text-amber-100">${uname}</h4>
+                                <p class="text-[10px] text-amber-200/60">${data.date}</p>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        }
+
+        async function setMood(emoji) {
+            let user = getCurrentUser();
+            let moods = DB.get('moods') || {};
+            moods[user.username] = { emoji, date: new Date().toLocaleDateString('fr-FR') };
+            await DB.set('moods', moods);
+            showToast("Humeur enregistrée !", "Ton emoji du jour est en ligne.");
         }
 
         // --- SONDAGES EN DIRECT ---
@@ -433,110 +497,160 @@
             showToast("Vote enregistré !", "Merci d'avoir participé au sondage.");
         }
 
-        // --- TRAITEMENT DE TEXTE PERSONNEL ---
+        // --- TRAITEMENT DE TEXTE PERSONNEL (COMPLET) ---
         function renderNotesTab(user) {
             let notes = DB.get('personal_notes') || {};
-            let userNotes = notes[user.username] || { title: '', content: '' };
+            let userNotes = notes[user.username] || [];
+            let activeNote = userNotes.find(n => n.id === state.activeNoteId) || null;
 
             return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-file-lines mr-2"></i>Traitement de Texte Personnel (Notes de Cours)</h2>
-                    <p class="text-amber-200/70">Rédige, mets en forme et sauvegarde tes notes personnelles de révision.</p>
-                    <input type="text" id="note-title" value="${userNotes.title || ''}" placeholder="Titre du cours ou de la note..." class="w-full p-3 bg-stone-900 border rounded-xl text-amber-100 font-bold">
-                    <textarea id="note-content" placeholder="Écris ton cours ici..." class="w-full p-4 bg-stone-900 border rounded-2xl h-64 resize-none text-amber-100 leading-relaxed font-mono">${userNotes.content || ''}</textarea>
-                    <button onclick="savePersonalNote()" class="w-full py-3 dyn-btn text-white font-bold rounded-xl shadow-lg">Sauvegarder mes notes</button>
+                <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                    <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                        <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-file-lines mr-2"></i>Traitement de Texte (Notes de Cours)</h2>
+                        <button onclick="createNewNote()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl"><i class="fa-solid fa-plus mr-1"></i> Nouveau Document</button>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
+                            ${userNotes.length === 0 ? '<p class="text-amber-200/50 italic">Aucun document.</p>' : ''}
+                            ${userNotes.map(n => `
+                                <div onclick="state.activeNoteId='${n.id}';render()" class="p-3 rounded-2xl border cursor-pointer ${activeNote && activeNote.id===n.id?'bg-amber-500/20 border-amber-400':'bg-stone-900 border-amber-900/30'}">
+                                    <h4 class="font-bold text-amber-100">${n.title || 'Sans titre'}</h4>
+                                    <p class="text-[10px] text-amber-200/60">Modifié le ${n.date}</p>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="md:col-span-2 space-y-3">
+                            ${activeNote ? `
+                                <input type="text" id="doc-title" value="${activeNote.title}" placeholder="Titre du document..." class="w-full p-3 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                <textarea id="doc-content" placeholder="Rédige ton cours ici..." class="w-full p-4 bg-stone-900 border rounded-2xl h-64 resize-none text-amber-100 leading-relaxed font-mono">${activeNote.content}</textarea>
+                                <div class="flex gap-2">
+                                    <button onclick="saveActiveNote('${activeNote.id}')" class="flex-1 py-3 dyn-btn text-white font-bold rounded-xl">Enregistrer le document</button>
+                                    <button onclick="deleteNote('${activeNote.id}')" class="px-4 py-3 bg-red-900/40 text-red-300 border border-red-500/30 font-bold rounded-xl">Supprimer</button>
+                                </div>
+                            ` : '<div class="h-64 flex items-center justify-center text-amber-200/50 italic">Sélectionne un document ou crée-en un nouveau.</div>'}
+                        </div>
+                    </div>
                 </div>
-            </div>`;
+            `;
         }
 
-        async function savePersonalNote() {
+        async function createNewNote() {
             let user = getCurrentUser();
-            let title = document.getElementById('note-title').value;
-            let content = document.getElementById('note-content').value;
             let notes = DB.get('personal_notes') || {};
-            notes[user.username] = { title, content, updated: new Date().toLocaleDateString() };
+            if (!notes[user.username]) notes[user.username] = [];
+            let newId = 'note_' + Date.now();
+            notes[user.username].push({ id: newId, title: 'Nouveau cours', content: '', date: new Date().toLocaleDateString('fr-FR') });
             await DB.set('personal_notes', notes);
-            showToast("Notes sauvegardées !", "Tes notes de cours sont enregistrées.");
+            state.activeNoteId = newId;
+            render();
         }
 
-        // --- SIMULATEUR DE MOYENNE BAC PRO ---
-        function renderBacSimTab(user) {
-            return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
-                <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-calculator mr-2"></i>Simulateur de Notes & Mention Bac Pro</h2>
-                <p class="text-amber-200/70">Estime ta moyenne générale et ta mention au Bac Pro MCV selon tes notes prévisionnelles.</p>
-                <div class="space-y-3">
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="text" placeholder="Épreuve / Matière" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 sim-name" value="Éco-Droit">
-                        <input type="number" step="0.5" max="20" placeholder="Note /20" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 sim-note" value="14">
-                    </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="text" placeholder="Épreuve / Matière" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 sim-name" value="Animation Commerciale">
-                        <input type="number" step="0.5" max="20" placeholder="Note /20" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 sim-note" value="16">
-                    </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="text" placeholder="Épreuve / Matière" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 sim-name" value="Français / Histoire">
-                        <input type="number" step="0.5" max="20" placeholder="Note /20" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 sim-note" value="13">
-                    </div>
-                    <button onclick="calculateBacAverage()" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Calculer la Moyenne & Mention</button>
-                </div>
-                <div id="sim-result" class="p-4 bg-stone-900 rounded-2xl border text-center font-black text-sm text-amber-300"></div>
-            </div>`;
+        async function saveActiveNote(noteId) {
+            let user = getCurrentUser();
+            let title = document.getElementById('doc-title').value;
+            let content = document.getElementById('doc-content').value;
+            let notes = DB.get('personal_notes') || {};
+            let idx = notes[user.username].findIndex(n => n.id === noteId);
+            if (idx !== -1) {
+                notes[user.username][idx].title = title;
+                notes[user.username][idx].content = content;
+                notes[user.username][idx].date = new Date().toLocaleDateString('fr-FR');
+                await DB.set('personal_notes', notes);
+                showToast("Document enregistré !", "Vos notes sont sauvegardées.");
+            }
         }
 
-        function calculateBacAverage() {
-            let notes = document.querySelectorAll('.sim-note');
-            let sum = 0, count = 0;
-            notes.forEach(n => {
-                let val = parseFloat(n.value);
-                if (!isNaN(val)) { sum += val; count++; }
-            });
-            if (count === 0) return;
-            let avg = (sum / count).toFixed(2);
-            let mention = avg >= 16 ? 'Très Bien 🏆' : avg >= 14 ? 'Bien 🌟' : avg >= 12 ? 'Assez Bien 👍' : avg >= 10 ? 'Admis (Sans mention) ✅' : 'Non Admis ❌';
-            document.getElementById('sim-result').innerHTML = `Moyenne estimée : ${avg} / 20<br>Mention : ${mention}`;
+        async function deleteNote(noteId) {
+            if (!confirm("Voulez-vous supprimer ce document ?")) return;
+            let user = getCurrentUser();
+            let notes = DB.get('personal_notes') || {};
+            notes[user.username] = notes[user.username].filter(n => n.id !== noteId);
+            await DB.set('personal_notes', notes);
+            state.activeNoteId = null;
+            showToast("Document supprimé", "");
         }
 
-        // --- FLASHCARDS COLLABORATIVES ---
+        // --- FLASHCARDS (MAX 100 CARTES, PUBLIC/PRIVÉ) ---
         function renderFlashcardsTab(user) {
             let decks = DB.get('flashcards_decks') || [];
+            let visibleDecks = decks.filter(d => d.isPublic || d.author === user.username);
+
             if (state.activeDeckId !== null) {
-                let deck = decks[state.activeDeckId];
-                return renderFlashcardSession(deck);
+                let deck = decks.find(d => d.id === state.activeDeckId);
+                if (deck) return renderFlashcardSession(deck);
             }
 
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
+            return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-4">
                     <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-clone mr-2"></i>Flashcards Mémoire & Révisions</h2>
-                    <form onsubmit="createFlashcardDeck(event)" class="p-4 bg-stone-900/80 rounded-2xl border space-y-2">
-                        <h3 class="font-bold text-amber-200">Créer un nouveau Deck de Flashcards</h3>
-                        <input type="text" id="fc-title" required placeholder="Titre du Deck (ex: Droit du Travail)" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100">
-                        <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Créer le Deck</button>
+                    <form onsubmit="createFlashcardDeck(event)" class="p-4 bg-stone-900/80 rounded-2xl border space-y-3">
+                        <h3 class="font-bold text-amber-200">Créer un nouveau jeu de Flashcards (Max 100 cartes)</h3>
+                        <input type="text" id="fc-title" required placeholder="Intitulé du jeu (ex: Droit du travail)..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                        
+                        <div id="fc-cards-container" class="space-y-2 max-h-48 overflow-y-auto pr-2">
+                            <div class="grid grid-cols-2 gap-2 fc-row">
+                                <input type="text" placeholder="Intitulé (Question)" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 fc-q">
+                                <input type="text" placeholder="Réponse" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 fc-a">
+                            </div>
+                        </div>
+                        <button type="button" onclick="addFlashcardRow()" class="px-3 py-1.5 bg-stone-800 text-amber-300 font-bold rounded-xl text-[11px]"><i class="fa-solid fa-plus mr-1"></i> Ajouter une carte</button>
+
+                        <div class="flex items-center gap-2 pt-2">
+                            <input type="checkbox" id="fc-public" class="accent-amber-500 w-4 h-4">
+                            <label for="fc-public" class="text-amber-200 font-bold">Rendre visible pour tous les utilisateurs (Public)</label>
+                        </div>
+                        <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Enregistrer le jeu de Flashcards</button>
                     </form>
                 </div>
                 <div class="space-y-3">
-                    ${decks.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucun deck de flashcards disponible.</p>' : ''}
-                    ${decks.map((d, dIdx) => `
+                    <h3 class="font-bold text-amber-300 text-sm">Jeux disponibles</h3>
+                    ${visibleDecks.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucun jeu de flashcards disponible.</p>' : ''}
+                    ${visibleDecks.map(d => `
                         <div class="dyn-card border p-5 rounded-2xl flex justify-between items-center">
                             <div>
-                                <h3 class="font-bold text-amber-300 text-sm">${d.title}</h3>
+                                <h3 class="font-bold text-amber-300 text-sm">${d.title} ${d.isPublic?'<span class="text-[9px] bg-green-500/20 text-green-300 px-2 py-0.5 rounded-full ml-2">Public</span>':'<span class="text-[9px] bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded-full ml-2">Privé</span>'}</h3>
                                 <p class="text-[10px] text-amber-200/60">${d.cards.length} carte(s) - Créé par ${d.author}</p>
                             </div>
-                            <button onclick="state.activeDeckId=${dIdx};render()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Réviser</button>
+                            <button onclick="state.activeDeckId='${d.id}';render()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Réviser</button>
                         </div>
                     `).join('')}
                 </div>
             </div>`;
         }
 
+        function addFlashcardRow() {
+            let container = document.getElementById('fc-cards-container');
+            if (container.children.length >= 100) return alert("Maximum 100 cartes par jeu !");
+            let div = document.createElement('div');
+            div.className = "grid grid-cols-2 gap-2 fc-row";
+            div.innerHTML = `
+                <input type="text" placeholder="Intitulé (Question)" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 fc-q">
+                <input type="text" placeholder="Réponse" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 fc-a">
+            `;
+            container.appendChild(div);
+        }
+
         async function createFlashcardDeck(e) {
             e.preventDefault();
             let user = getCurrentUser();
             let title = document.getElementById('fc-title').value.trim();
-            let decks = DB.get('flashcards_decks') || [];
+            let isPublic = document.getElementById('fc-public').checked;
+            let rows = document.querySelectorAll('.fc-row');
+            let cards = [];
 
-            decks.push({ title, author: user.pseudo || user.username, cards: [{ q: 'Exemple de question ?', a: 'Exemple de réponse.' }] });
+            rows.forEach(r => {
+                let q = r.querySelector('.fc-q').value.trim();
+                let a = r.querySelector('.fc-a').value.trim();
+                if (q && a) cards.push({ q, a });
+            });
+
+            if (cards.length === 0) return alert("Ajoute au moins une carte !");
+
+            let decks = DB.get('flashcards_decks') || [];
+            let newDeck = { id: 'deck_' + Date.now(), title, author: user.pseudo || user.username, isPublic, cards };
+            decks.push(newDeck);
             await DB.set('flashcards_decks', decks);
-            showToast("Deck créé !", "Tu peux maintenant ajouter des cartes.");
+            showToast("Jeu enregistré !", "Ton jeu de flashcards est disponible.");
         }
 
         function renderFlashcardSession(deck) {
@@ -545,29 +659,144 @@
                     <h2 class="text-base font-black text-amber-400">${deck.title}</h2>
                     <button onclick="state.activeDeckId=null;render()" class="px-3 py-1 bg-stone-900 text-amber-200 border rounded-xl font-bold">Retour</button>
                 </div>
-                <div onclick="this.classList.toggle('rotate-y-180')" class="p-10 bg-stone-900 rounded-2xl border border-amber-500/40 min-h-[160px] flex items-center justify-center cursor-pointer shadow-inner">
-                    <p class="text-sm font-bold text-amber-100"><b>Question :</b> ${deck.cards[0].q}<br><br><span class="text-amber-400 font-normal">Clique pour voir la réponse :</span> ${deck.cards[0].a}</p>
+                <div class="p-10 bg-stone-900 rounded-2xl border border-amber-500/40 min-h-[180px] flex flex-col items-center justify-center space-y-4 shadow-inner">
+                    <h4 class="text-amber-300 font-bold text-sm">Question :</h4>
+                    <p class="text-sm font-bold text-amber-100">${deck.cards[0].q}</p>
+                    <p class="text-amber-400 font-bold text-xs" id="fc-ans-box">Réponse masquée</p>
+                    <button onclick="document.getElementById('fc-ans-box').innerHTML='<b>Réponse :</b> ' + '${deck.cards[0].a.replace(/'/g, "\\'")}'" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Voir la réponse</button>
                 </div>
             </div>`;
         }
 
+        // --- SIMULATEUR DE NOTES BAC PRO COMPLET ---
+        function renderBacSimTab(user) {
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-calculator mr-2"></i>Simulateur de Notes & Mention Bac Pro MCV</h2>
+                    <p class="text-amber-200/70">Toutes les épreuves et matières officielles avec leurs coefficients.</p>
+                    <div class="space-y-2 max-h-72 overflow-y-auto pr-2" id="sim-matieres-list">
+                        ${[
+                            { name: 'Épreuve E1 - Économie - Droit & Gestion', coef: 4 },
+                            { name: 'Épreuve E2 - Analyse et résolution de situations professionnelles', coef: 7 },
+                            { name: 'Épreuve E3 - Pratique professionnelle', coef: 9 },
+                            { name: 'Français / Histoire - Géographie / EMC', coef: 5 },
+                            { name: 'Langue Vivante (Anglais)', coef: 2 },
+                            { name: 'Mathématiques - Sciences physiques et chimiques', coef: 3 },
+                            { name: 'Arts appliqués et cultures artistiques', coef: 1 },
+                            { name: 'Éducation Physique et Sportive (EPS)', coef: 1 },
+                            { name: 'Prévention Santé Environnement (PSE)', coef: 1 }
+                        ].map(m => `
+                            <div class="grid grid-cols-3 gap-2 p-3 bg-stone-900 rounded-xl border items-center">
+                                <span class="col-span-2 font-bold text-amber-100">${m.name} (Coef. ${m.coef})</span>
+                                <input type="number" step="0.5" min="0" max="20" placeholder="Note /20" data-coef="${m.coef}" class="p-2 bg-stone-950 border rounded-xl text-amber-300 font-bold sim-input" value="12">
+                            </div>
+                        `).join('')}
+                    </div>
+                    <button onclick="calculateFullBacAverage()" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-sm">Calculer ma Moyenne Générale & Mention</button>
+                </div>
+                <div id="sim-full-result" class="hidden dyn-card border p-6 rounded-3xl text-center space-y-2"></div>
+            </div>`;
+        }
+
+        function calculateFullBacAverage() {
+            let inputs = document.querySelectorAll('.sim-input');
+            let totalWeighted = 0, totalCoef = 0;
+            inputs.forEach(i => {
+                let note = parseFloat(i.value) || 0;
+                let coef = parseFloat(i.getAttribute('data-coef')) || 1;
+                totalWeighted += note * coef;
+                totalCoef += coef;
+            });
+            let avg = (totalWeighted / totalCoef).toFixed(2);
+            let mention = avg >= 16 ? 'Très Bien 🏆' : avg >= 14 ? 'Bien 🌟' : avg >= 12 ? 'Assez Bien 👍' : avg >= 10 ? 'Admis (Sans mention) ✅' : 'Refusé ❌';
+            let resDiv = document.getElementById('sim-full-result');
+            resDiv.classList.remove('hidden');
+            resDiv.innerHTML = `<h3 class="text-lg font-black text-amber-400">Résultat de la simulation</h3><div class="text-3xl font-extrabold text-white mt-1">${avg} / 20</div><p class="text-sm font-bold text-amber-300 mt-2">Mention : ${mention}</p>`;
+        }
+
+        // --- ESPACE ARCADE ---
+        function renderGamesSection() {
+            return `
+                <div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl max-w-5xl mx-auto">
+                    <div class="flex items-center justify-between border-b border-amber-900/40 pb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl"><i class="fa-solid fa-gamepad"></i></div>
+                            <div>
+                                <h3 class="font-black text-lg text-amber-400">Espace Arcade & Jeux MCV</h3>
+                                <p class="text-xs text-amber-200/60">Jeux interactifs et stimulants.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        ${PLAYABLE_GAMES.map(g => `
+                            <div onclick="launchGame('${g.id}')" class="p-5 rounded-2xl bg-stone-950/80 border border-amber-900/30 hover:border-amber-500 cursor-pointer transition flex justify-between items-center">
+                                <div>
+                                    <h4 class="text-xs font-black text-amber-100">${g.name}</h4>
+                                    <p class="text-[10px] text-amber-200/60 mt-1">${g.desc}</p>
+                                </div>
+                                <span class="dyn-btn px-4 py-2 text-white font-bold rounded-xl text-xs">Jouer</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div id="game-stage" class="hidden bg-stone-950 p-6 rounded-2xl border border-amber-500/40 space-y-4">
+                        <div class="flex justify-between items-center border-b border-amber-900/30 pb-3">
+                            <h4 id="active-game-title" class="font-black text-sm text-amber-300"></h4>
+                            <div class="flex items-center gap-4">
+                                <span class="text-xs">Score : <b id="active-game-score" class="text-amber-400">0</b> pts</span>
+                                <button onclick="closeActiveGame()" class="px-2 py-1 bg-red-900/40 text-red-300 rounded text-xs">Quitter</button>
+                            </div>
+                        </div>
+                        <div id="active-game-content" class="min-h-[180px] flex flex-col justify-center items-center text-center space-y-3"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        let gameInterval = null;
+        function launchGame(gameId) {
+            currentGameId = gameId;
+            currentGameScore = 0;
+            if (gameInterval) clearInterval(gameInterval);
+            let game = PLAYABLE_GAMES.find(g => g.id === gameId);
+            document.getElementById('active-game-title').innerText = game.name;
+            document.getElementById('active-game-score').innerText = currentGameScore;
+            document.getElementById('game-stage').classList.remove('hidden');
+
+            let c = document.getElementById('active-game-content');
+            if (gameId === 'clicker_caisse') {
+                let time = 15;
+                c.innerHTML = `<p class="text-xs">Encaisse un max d'articles !</p><div class="text-xl font-bold" id="c-time">15s</div><button onclick="currentGameScore+=5;document.getElementById('active-game-score').innerText=currentGameScore" class="px-6 py-3 dyn-btn text-white font-bold rounded-xl">🛒 ENCAISSER</button>`;
+                gameInterval = setInterval(() => {
+                    time--;
+                    let el = document.getElementById('c-time');
+                    if (el) el.innerText = time + 's';
+                    if (time <= 0) clearInterval(gameInterval);
+                }, 1000);
+            } else {
+                c.innerHTML = `<p class="text-xs">Question : Où placer les 1ers prix ?</p><div class="flex gap-2"><button onclick="checkGameMCQ(true)" class="px-4 py-2 bg-stone-900 border text-green-300 font-bold rounded-xl">Niveau Sol</button><button onclick="checkGameMCQ(false)" class="px-4 py-2 bg-stone-900 border text-red-300 font-bold rounded-xl">Niveau Yeux</button></div>`;
+            }
+        }
+
+        function checkGameMCQ(ok) {
+            if (ok) { currentGameScore += 20; document.getElementById('active-game-score').innerText = currentGameScore; alert("Bonne réponse ! +20 pts"); }
+            else { alert("Mauvaise réponse !"); }
+        }
+
+        function closeActiveGame() { if (gameInterval) clearInterval(gameInterval); document.getElementById('game-stage').classList.add('hidden'); }
+
         // --- TUTEUR IA ---
         function renderAiTuteurSection() {
-            return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs h-[520px] flex flex-col justify-between">
+            return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs h-[540px] flex flex-col justify-between">
                 <div class="border-b border-amber-900/40 pb-3">
-                    <h2 class="text-lg font-black text-amber-400"><i class="fa-solid fa-robot mr-2"></i>Tuteur IA (Assistant Pédagogique)</h2>
-                    <p class="text-amber-200/70">Pose tes questions sur tes cours de Droit, Éco, Gestion ou Commerce.</p>
+                    <h2 class="text-lg font-black text-amber-400"><i class="fa-solid fa-robot mr-2"></i>Tuteur IA (Assistant Pédagogique MCV)</h2>
+                    <p class="text-amber-200/70">Pose tes questions sur le Droit, l'Économie, la Gestion et le Commerce.</p>
                 </div>
-                <div class="flex-1 overflow-y-auto space-y-3 p-3 bg-stone-900/60 rounded-2xl border border-amber-900/30">
-                    ${state.aiMessages.map(m => `
-                        <div class="p-3 rounded-2xl max-w-[80%] ${m.sender==='user'?'ml-auto bg-amber-600 text-white font-bold':'mr-auto bg-stone-950 text-amber-100 border border-amber-900/40'}">
-                            ${m.text}
-                        </div>
-                    `).join('')}
+                <div class="flex-1 overflow-y-auto space-y-3 p-3 bg-stone-900/60 rounded-2xl border">
+                    ${state.aiMessages.map(m => `<div class="p-3 rounded-2xl max-w-[80%] ${m.sender==='user'?'ml-auto bg-amber-600 text-white font-bold':'mr-auto bg-stone-950 text-amber-100 border'}">${m.text}</div>`).join('')}
                 </div>
                 <form onsubmit="sendAiMessage(event)" class="flex gap-2">
-                    <input type="text" id="ai-inp" required placeholder="Pose ta question au Tuteur IA..." class="flex-1 p-3 bg-stone-900 border rounded-xl text-amber-100">
-                    <button type="submit" class="dyn-btn px-5 text-white font-bold rounded-xl">Envoyer</button>
+                    <input type="text" id="ai-inp" required placeholder="Pose ta question..." class="flex-1 p-3 bg-stone-900 border rounded-xl text-amber-100">
+                    <button type="submit" class="dyn-btn px-6 text-white font-bold rounded-xl">Envoyer</button>
                 </form>
             </div>`;
         }
@@ -577,214 +806,182 @@
             let inp = document.getElementById('ai-inp');
             let txt = inp.value.trim();
             if (!txt) return;
-
             state.aiMessages.push({ sender: 'user', text: txt });
             inp.value = '';
             render();
-
             setTimeout(() => {
-                state.aiMessages.push({ sender: 'ai', text: `Réponse du Tuteur IA : C'est une excellente question sur "${txt}". En Bac Pro MCV, retiens bien que la maîtrise des notions clés est essentielle pour l'examen !` });
+                state.aiMessages.push({ sender: 'ai', text: `En Bac Pro MCV, retiens bien que la maîtrise de "${txt}" est fondamentale pour l'examen. Structure tes réponses avec des exemples précis !` });
                 render();
-            }, 1000);
+            }, 800);
         }
 
-        // --- ORIENTATION & POST-BAC ---
-        function renderFormationsTab(user) {
-            let formations = DB.get('formations') || [];
-            return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-2">
-                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-graduation-cap mr-2"></i>Orientation & Formations Post-Bac</h2>
-                    <p class="text-amber-200/70">Découvre les BTS, BUT et Licences adaptés à ton parcours.</p>
+        // --- CLASSEMENT ---
+        function renderLeaderboardSection(u) {
+            let scores = DB.get('user_scores') || {};
+            let users = DB.get('users') || [];
+            let sorted = users.map(user => ({ pseudo: user.pseudo || user.username, score: scores[user.username] || 0 })).sort((a, b) => b.score - a.score);
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl text-center"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-trophy mr-2"></i>Classement Classe</h2></div>
+                <div class="space-y-2">${sorted.map((s, idx) => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="font-bold text-amber-400">#${idx+1} ${s.pseudo}</span><span class="font-bold text-white">${s.score} pts</span></div>`).join('')}</div>
+            </div>`;
+        }
+
+        // --- MESSAGERIE ---
+        function renderChat(user) {
+            let msgs = DB.get('messages') || [], users = DB.get('users') || [];
+            let filtered = state.chatMode === 'general' ? msgs.filter(m => !m.recipient || m.recipient === 'all') : msgs.filter(m => (m.sender === user.username && m.recipient === state.targetUser) || (m.sender === state.targetUser && m.recipient === user.username));
+            return `<div class="max-w-4xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs h-[540px] flex flex-col justify-between">
+                <div class="flex justify-between items-center border-b pb-3">
+                    <h2 class="text-base font-black text-amber-400">Messagerie</h2>
+                    <div class="flex gap-2">
+                        <button onclick="state.chatMode='general';state.targetUser=null;render()" class="px-3 py-1.5 ${state.chatMode==='general'?'dyn-btn text-white':'bg-stone-900'} rounded-xl font-bold">Général</button>
+                        <select onchange="state.chatMode='private';state.targetUser=this.value;render()" class="p-1.5 bg-stone-900 border rounded-xl text-amber-300 font-bold"><option value="">Message Privé...</option>${users.filter(x => x.username !== user.username).map(x => `<option value="${x.username}" ${state.targetUser===x.username?'selected':''}>${x.pseudo||x.username}</option>`).join('')}</select>
+                    </div>
                 </div>
-                <div class="space-y-3">
-                    ${formations.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune formation répertoriée.</p>' : ''}
-                    ${formations.map(f => `
-                        <div class="dyn-card border p-5 rounded-2xl space-y-2">
-                            <h3 class="font-bold text-amber-300 text-sm">${f.title}</h3>
-                            <p class="text-[10px] text-amber-200/70">${f.establishment} - ${f.city}</p>
-                            <p class="text-amber-100">${f.desc}</p>
-                            ${f.link ? `<a href="${f.link}" target="_blank" class="inline-block mt-2 px-3 py-1.5 dyn-btn text-white font-bold rounded-xl text-[10px]">Lien d'information / Candidature</a>` : ''}
+                <div class="flex-1 overflow-y-auto space-y-3 p-3 bg-stone-900/60 rounded-2xl border">${filtered.map(m => `<div class="p-3 rounded-2xl max-w-[80%] ${m.sender===user.username?'ml-auto bg-amber-600 text-white':'mr-auto bg-stone-950 text-amber-100 border'}"><b class="text-amber-300">${m.sender}</b><p>${m.text}</p></div>`).join('')}</div>
+                <form onsubmit="sendChatMessage(event)" class="flex gap-2"><input type="text" id="chat-inp" required placeholder="Message..." class="flex-1 p-3 bg-stone-900 border rounded-xl text-amber-100"><button type="submit" class="dyn-btn px-6 text-white font-bold rounded-xl">Envoyer</button></form>
+            </div>`;
+        }
+
+        async function sendChatMessage(e) {
+            e.preventDefault();
+            let user = getCurrentUser(), inp = document.getElementById('chat-inp'), text = inp.value.trim();
+            if (!text) return;
+            let msgs = DB.get('messages') || [];
+            msgs.push({ sender: user.username, recipient: state.chatMode === 'private' ? state.targetUser : 'all', type: state.chatMode === 'private' ? 'private' : 'general', text, time: new Date().toLocaleTimeString() });
+            await DB.set('messages', msgs);
+            inp.value = '';
+            render();
+        }
+
+        // --- SUPPORT & MAILS ---
+        function renderTicketsTab(user) {
+            let tickets = DB.get('tickets') || [];
+            return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                    <h2 class="text-xl font-black text-amber-400">Support & Mails</h2>
+                    <form onsubmit="sendSupportTicket(event)" class="space-y-2 p-4 bg-stone-900 rounded-2xl border"><input type="text" id="t-subject" required placeholder="Sujet..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100"><textarea id="t-msg" required placeholder="Message..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 h-20"></textarea><button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Envoyer</button></form>
+                </div>
+                <div class="space-y-3">${tickets.map(t => `<div class="dyn-card border p-4 rounded-2xl"><h3 class="font-bold text-amber-300">${t.subject}</h3><p>${t.message}</p></div>`).join('')}</div>
+            </div>`;
+        }
+
+        async function sendSupportTicket(e) {
+            e.preventDefault();
+            let user = getCurrentUser(), subject = document.getElementById('t-subject').value, message = document.getElementById('t-msg').value;
+            let tickets = DB.get('tickets') || [];
+            tickets.unshift({ author: user.username, subject, message, date: new Date().toLocaleDateString(), reply: '' });
+            await DB.set('tickets', tickets);
+            showToast("Mail envoyé !", "");
+        }
+
+        // --- PROFIL & AVATAR ---
+        function renderProfileTab(user) {
+            return `<div class="max-w-xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-8 rounded-3xl space-y-4">
+                    <h2 class="text-xl font-black text-amber-400">Mon Profil & Avatar</h2>
+                    <form onsubmit="saveProfile(event)" class="space-y-3">
+                        <div class="flex justify-center my-4"><div class="w-16 h-16 rounded-full border-2 border-amber-400 flex items-center justify-center text-2xl relative overflow-hidden" style="background-color: ${user.avatarSkin||'#fca5a5'}"><span>${user.avatarAccessory||'👤'}</span><span class="absolute -top-1 right-0 text-xs">${user.avatarHair||'🧢'}</span></div></div>
+                        <div><label class="block font-bold text-amber-300">Pseudo :</label><input type="text" id="p-pseudo" value="${user.pseudo||user.username}" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-white"></div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div><label class="block font-bold text-amber-300">Peau :</label><input type="color" id="p-skin" value="${user.avatarSkin||'#fca5a5'}" class="w-full h-10 bg-stone-900 border rounded-xl"></div>
+                            <div><label class="block font-bold text-amber-300">Accessoire :</label><select id="p-acc" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white"><option value="👑">👑</option><option value="👓">👓</option><option value="⭐">⭐</option><option value="🎧">🎧</option></select></div>
+                            <div><label class="block font-bold text-amber-300">Chapeau :</label><select id="p-hair" class="w-full p-2.5 bg-stone-900 border rounded-xl text-white"><option value="🧢">🧢</option><option value="🎩">🎩</option><option value="🎓">🎓</option></select></div>
                         </div>
-                    `).join('')}
+                        <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl mt-2">Enregistrer</button>
+                    </form>
                 </div>
             </div>`;
         }
 
-        // --- ESPACE ARCADE (20 JEUX) ---
-        function renderGamesSection() {
-            let filtered = state.gameFilter === 'all' ? PLAYABLE_GAMES : PLAYABLE_GAMES.filter(g => g.cat === state.gameFilter);
-            return `
-                <div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl max-w-5xl mx-auto">
-                    <div class="flex flex-col md:flex-row items-start md:items-center justify-between border-b border-amber-900/40 pb-4 gap-4">
-                        <div class="flex items-center gap-3">
-                            <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl shadow"><i class="fa-solid fa-gamepad"></i></div>
-                            <div>
-                                <h3 class="font-black text-lg text-amber-400">Espace Détente & Arcade (20 Jeux)</h3>
-                                <p class="text-xs text-amber-200/60">10 jeux ludo-éducatifs MCV + 10 jeux détente entièrement jouables.</p>
-                            </div>
-                        </div>
-                        <div class="flex gap-2">
-                            <button onclick="state.gameFilter='all';render()" class="px-3 py-1.5 ${state.gameFilter==='all'?'dyn-btn text-white':'bg-stone-800 text-amber-200'} font-bold rounded-xl text-xs">Tous (20)</button>
-                            <button onclick="state.gameFilter='ludo';render()" class="px-3 py-1.5 ${state.gameFilter==='ludo'?'dyn-btn text-white':'bg-stone-800 text-amber-200'} font-bold rounded-xl text-xs border">Ludo-Pro (10)</button>
-                            <button onclick="state.gameFilter='chill';render()" class="px-3 py-1.5 ${state.gameFilter==='chill'?'dyn-btn text-white':'bg-stone-800 text-amber-200'} font-bold rounded-xl text-xs border">Détente (10)</button>
-                        </div>
-                    </div>
+        async function saveProfile(e) {
+            e.preventDefault();
+            let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
+            if (idx !== -1) {
+                users[idx].pseudo = document.getElementById('p-pseudo').value;
+                users[idx].avatarSkin = document.getElementById('p-skin').value;
+                users[idx].avatarAccessory = document.getElementById('p-acc').value;
+                users[idx].avatarHair = document.getElementById('p-hair').value;
+                await DB.set('users', users);
+                sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
+                showToast("Profil mis à jour !", "");
+            }
+        }
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 max-h-[50vh] overflow-y-auto pr-2">
-                        ${filtered.map(g => `
-                            <div onclick="launchGame('${g.id}')" class="p-4 rounded-2xl bg-stone-950/80 border border-amber-900/30 hover:border-amber-500 cursor-pointer transition flex flex-col justify-between space-y-3">
-                                <div>
-                                    <div class="flex items-center justify-between mb-2">
-                                        <span class="p-2 bg-stone-900 rounded-xl text-amber-400 text-sm"><i class="fa-solid ${g.icon}"></i></span>
-                                        <span class="text-[10px] px-2 py-0.5 rounded-full font-bold border ${g.cat==='ludo'?'bg-purple-500/20 text-purple-300':'bg-amber-500/20 text-amber-300'}">${g.cat==='ludo'?'Ludo-Pro':'Détente'}</span>
-                                    </div>
-                                    <h4 class="text-xs font-black text-amber-100">${g.name}</h4>
-                                    <p class="text-[10px] text-amber-200/60 mt-1">${g.desc}</p>
+        // --- AUTRES MODULES ÉLÈVES ---
+        function renderFormationsTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Orientation Post-Bac</h2></div>`; }
+        function renderIdeasPage(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Boîte à Idées (Vote 48h)</h2></div>`; }
+        function renderQuizzesTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Quiz & Évaluations</h2></div>`; }
+
+        // --- CONSULTATION APPRÉCIATIONS (CÔTÉ ÉLÈVE) ---
+        function renderUserAppreciations(user) {
+            let apps = DB.get('appreciations') || {};
+            let myApps = apps[user.username] || {};
+
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-2">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-file-contract mr-2"></i>Mes Appréciations Trimestrielles</h2>
+                    <p class="text-amber-200/70">Consulte le bilan publié par l'administration pour chaque trimestre.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    ${['Trimestre 1', 'Trimestre 2', 'Trimestre 3'].map((t, idx) => {
+                        let tKey = 'T' + (idx + 1);
+                        let app = myApps[tKey];
+                        return `
+                            <div class="dyn-card border p-5 rounded-2xl space-y-3">
+                                <div class="flex justify-between items-center border-b border-amber-900/40 pb-2">
+                                    <h3 class="font-bold text-amber-300 text-sm">${t}</h3>
+                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${app && app.published?'bg-green-500/20 text-green-300':'bg-stone-800 text-amber-200/50'}">${app && app.published?'Publié':'En attente'}</span>
                                 </div>
-                                <span class="text-[10px] font-bold text-amber-400">Jouer <i class="fa-solid fa-play ml-1"></i></span>
+                                ${app && app.published ? `
+                                    <p class="text-amber-100 leading-relaxed font-medium">${app.text || 'Aucune appréciation saisie.'}</p>
+                                ` : '<p class="text-amber-200/40 italic py-4">L\'appréciation de ce trimestre n\'a pas encore été publiée.</p>'}
                             </div>
-                        `).join('')}
+                        `;
+                    })}
+                </div>
+            </div>`;
+        }
+
+        // --- PANNEAU ADMINISTRATEUR NAVIGABLE & SURVEILLANCE CLIQUABLE ---
+        function renderAdmin() {
+            let users = DB.get('users') || [];
+            let msgs = DB.get('messages') || [];
+            let tickets = DB.get('tickets') || [];
+            let apps = DB.get('appreciations') || {};
+
+            return `
+                <div class="max-w-5xl mx-auto space-y-6 text-xs">
+                    <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                        <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-user-gear mr-2"></i>Panneau d'Administration LE QG</h2>
+                        <!-- BARRE DE NAVIGATION ADMIN -->
+                        <div class="flex flex-wrap gap-2 border-t border-amber-900/40 pt-3">
+                            ${adminNavBtn('users', 'Comptes Users', 'users-gear')}
+                            ${adminNavBtn('appreciations', 'Appréciations', 'file-signature')}
+                            ${adminNavBtn('pubs', 'Publications (Sujets/Fiches)', 'file-pdf')}
+                            ${adminNavBtn('polls', 'Sondages', 'square-poll-vertical')}
+                            ${adminNavBtn('themes', 'Thèmes & Saisons', 'palette')}
+                            ${adminNavBtn('surveillance', 'Surveillance MP / Mails', 'user-secret')}
+                            ${adminNavBtn('qrcode', 'QR Code', 'qrcode')}
+                        </div>
                     </div>
 
-                    <div id="game-stage" class="hidden bg-stone-950 p-6 rounded-2xl border border-amber-500/40 space-y-4 shadow-inner">
-                        <div class="flex justify-between items-center border-b border-amber-900/30 pb-3">
-                            <div class="flex items-center gap-2">
-                                <span id="active-game-icon" class="text-amber-400 text-lg"></span>
-                                <h4 id="active-game-title" class="font-black text-sm text-amber-300"></h4>
-                            </div>
-                            <div class="flex items-center gap-4">
-                                <span class="text-xs text-amber-200/80">Score : <b id="active-game-score" class="text-amber-400">0</b> pts</span>
-                                <button onclick="closeActiveGame()" class="px-2.5 py-1 bg-red-900/40 text-red-300 border border-red-500/30 rounded-lg text-xs font-bold"><i class="fa-solid fa-xmark mr-1"></i> Quitter</button>
-                            </div>
-                        </div>
-                        <div class="bg-stone-900/90 border border-amber-900/40 p-4 rounded-xl space-y-2 text-xs">
-                            <div class="flex items-center gap-2 text-amber-400 font-bold"><i class="fa-solid fa-circle-info"></i><span>Règles :</span></div>
-                            <p id="active-game-rules" class="text-amber-200/90 leading-relaxed pl-5 border-l-2 border-amber-500/40"></p>
-                        </div>
-                        <div id="active-game-content" class="min-h-[180px] flex flex-col justify-center items-center text-center space-y-3 pt-2"></div>
-                    </div>
+                    ${renderAdminSubSection(users, msgs, tickets, apps)}
                 </div>
             `;
         }
 
-        function launchGame(gameId) {
-            let game = PLAYABLE_GAMES.find(g => g.id === gameId);
-            if (!game) return;
-            currentGameId = gameId;
-            currentGameScore = 0;
-
-            document.getElementById('active-game-title').innerText = game.name;
-            document.getElementById('active-game-icon').innerHTML = `<i class="fa-solid ${game.icon}"></i>`;
-            document.getElementById('active-game-rules').innerHTML = game.rules;
-            document.getElementById('active-game-score').innerText = currentGameScore;
-            
-            document.getElementById('game-stage').classList.remove('hidden');
-            document.getElementById('game-stage').scrollIntoView({ behavior: 'smooth' });
-
-            buildPlayableGameInterface(game);
+        function adminNavBtn(subId, label, icon) {
+            let active = state.adminSub === subId;
+            return `<button onclick="state.adminSub='${subId}';render()" class="px-3.5 py-2 rounded-xl font-bold flex items-center gap-2 border transition ${active?'dyn-btn text-white border-amber-400':'bg-stone-900 text-amber-200/80 border-amber-900/40 hover:bg-stone-850'}"><i class="fa-solid fa-${icon}"></i> ${label}</button>`;
         }
 
-        function closeActiveGame() { document.getElementById('game-stage').classList.add('hidden'); render(); }
-
-        function buildPlayableGameInterface(game) {
-            let container = document.getElementById('active-game-content');
-            if (game.type === 'clicker') {
-                container.innerHTML = `<button onclick="currentGameScore+=5;document.getElementById('active-game-score').innerText=currentGameScore;" class="p-6 bg-amber-500 text-stone-950 font-black text-xs rounded-2xl shadow-lg hover:scale-105 active:scale-95 transition">🛒 CLIQUER POUR ENCAISSER (+5 pts)</button>`;
-            } else if (game.type === 'chef_rayon') {
-                container.innerHTML = `
-                    <p class="text-xs text-amber-100 font-bold mb-2">Où implanter un article "Premier Prix" ?</p>
-                    <div class="grid grid-cols-3 gap-2 w-full max-w-sm">
-                        <button onclick="checkGameAnswer(false, '❌ Non, les 1ers prix ne vont pas aux yeux.')" class="p-3 bg-stone-900 border rounded-xl text-xs font-bold text-amber-200">Niveau Yeux</button>
-                        <button onclick="checkGameAnswer(false, '❌ Non, pas au milieu.')" class="p-3 bg-stone-900 border rounded-xl text-xs font-bold text-amber-200">Niveau Mains</button>
-                        <button onclick="checkGameAnswer(true, '✅ Exact ! Les 1ers prix vont tout en bas au sol.')" class="p-3 bg-stone-900 border rounded-xl text-xs font-bold text-green-300">Niveau Sol (Bas)</button>
-                    </div>
-                    <p id="game-feedback" class="text-xs font-bold mt-2"></p>
-                `;
-            } else {
-                container.innerHTML = `
-                    <p class="text-xs text-amber-100">Réponds correctement pour marquer des points :</p>
-                    <div class="flex gap-3 mt-2">
-                        <button onclick="checkGameAnswer(true, '✅ Bonne réponse ! (+10 pts)', 10)" class="px-4 py-2 bg-stone-900 border border-green-500/40 rounded-xl text-xs text-green-300 font-bold">Option Conforme (A)</button>
-                        <button onclick="checkGameAnswer(false, '❌ Mauvaise réponse !', 0)" class="px-4 py-2 bg-stone-900 border border-red-500/40 rounded-xl text-xs text-red-300 font-bold">Option Abusive (B)</button>
-                    </div>
-                    <p id="game-feedback" class="text-xs font-bold mt-2"></p>
-                `;
-            }
-        }
-
-        function checkGameAnswer(isCorrect, msg, pts = 10) {
-            let fb = document.getElementById('game-feedback');
-            if (isCorrect) {
-                currentGameScore += pts;
-                document.getElementById('active-game-score').innerText = currentGameScore;
-                fb.className = "text-xs text-green-400 font-bold mt-2";
-            } else {
-                fb.className = "text-xs text-red-400 font-bold mt-2";
-            }
-            if (fb) fb.innerText = msg;
-        }
-
-        // --- ESPACE ADMINISTRATEUR COMPLET & HISTORIQUES ---
-        function renderAdmin() {
-            let users = DB.get('users') || [];
-            let hidden = DB.get('hidden_tabs') || [];
-            let allMsgs = DB.get('messages') || [];
-            let polls = DB.get('polls') || [];
-            let ideas = DB.get('ideas_board') || [];
-            let theme = DB.get('site_theme') || { btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)' };
-
-            return `
-                <div class="max-w-4xl mx-auto space-y-6 text-xs">
-                    <div class="dyn-card border p-6 rounded-3xl space-y-2">
-                        <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-user-gear mr-2"></i>Espace Délégué / Administration</h2>
-                        <p class="text-amber-200/70">Gestion intégrale des comptes, sondages, publications, thèmes et historiques.</p>
-                    </div>
-
-                    <!-- 1. GESTION DES THÈMES & SAISONS -->
-                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-palette mr-2"></i>Thèmes & Saisons (Noël, Halloween, Standard...)</h3>
-                        <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                            <button onclick="setThemePreset('#d97706', 'rgba(10, 10, 10, 0.9)', 'rgba(245, 158, 11, 0.4)')" class="p-3 bg-stone-900 border rounded-xl font-bold text-amber-400">Standard QG</button>
-                            <button onclick="setThemePreset('#dc2626', 'rgba(20, 10, 10, 0.9)', 'rgba(220, 38, 38, 0.4)')" class="p-3 bg-stone-900 border rounded-xl font-bold text-red-400">🎄 Noël</button>
-                            <button onclick="setThemePreset('#ea580c', 'rgba(20, 10, 5, 0.9)', 'rgba(234, 88, 12, 0.4)')" class="p-3 bg-stone-900 border rounded-xl font-bold text-orange-400">🎃 Halloween</button>
-                            <button onclick="setThemePreset('#16a34a', 'rgba(10, 20, 10, 0.9)', 'rgba(34, 197, 94, 0.4)')" class="p-3 bg-stone-900 border rounded-xl font-bold text-green-400">🌸 Printemps / Pâques</button>
-                        </div>
-                    </div>
-
-                    <!-- 2. CRÉATION DE SONDAGES AVEC MINUTERIE -->
-                    <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-square-poll-vertical mr-2"></i>Créer un Sondage Chrono</h3>
-                        <form onsubmit="adminCreatePoll(event)" class="space-y-2">
-                            <input type="text" id="poll-quest" required placeholder="Question du sondage..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            <div class="grid grid-cols-2 gap-2">
-                                <input type="text" id="poll-opt1" required placeholder="Option 1" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                                <input type="text" id="poll-opt2" required placeholder="Option 2" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            </div>
-                            <div class="grid grid-cols-3 gap-2">
-                                <input type="number" id="poll-days" placeholder="Jours" min="0" value="1" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                                <input type="number" id="poll-hours" placeholder="Heures" min="0" max="23" value="0" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                                <input type="number" id="poll-mins" placeholder="Minutes" min="0" max="59" value="0" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            </div>
-                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Lancer le Sondage</button>
-                        </form>
-                    </div>
-
-                    <!-- 3. PUBLICATION DE CONTENU (FICHIER OU URL) -->
-                    <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-book-open mr-2"></i>Publier une Fiche de Révision (Fichier ou Lien)</h3>
-                        <form onsubmit="adminUploadRevision(event)" class="space-y-2">
-                            <input type="text" id="rev-title" required placeholder="Titre de la fiche..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            <input type="file" id="rev-file" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
-                            <input type="url" id="rev-url" placeholder="Ou lien URL externe..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier & Notifier la Classe</button>
-                        </form>
-                    </div>
-
-                    <!-- 4. GESTION DES COMPTES UTILISATEURS & MDP PROVISOIRES -->
+        function renderAdminSubSection(users, msgs, tickets, apps) {
+            if (state.adminSub === 'users') {
+                return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
                         <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-users-gear mr-2"></i>Gestion des Comptes & Mots de Passe Provisoires</h3>
                         <form onsubmit="adminCreateUser(event)" class="p-4 bg-stone-900/80 rounded-2xl border space-y-2">
-                            <h4 class="font-bold text-amber-200">Créer un nouveau compte (MDP provisoire)</h4>
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <input type="text" id="uc-user" required placeholder="Identifiant..." class="p-2.5 bg-stone-950 border rounded-xl text-amber-100">
                                 <input type="text" id="uc-pass" required placeholder="MDP provisoire..." class="p-2.5 bg-stone-950 border rounded-xl text-amber-100" value="qg2026">
@@ -796,13 +993,12 @@
                             </div>
                             <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Créer le Compte</button>
                         </form>
-
-                        <div class="space-y-2 max-h-48 overflow-y-auto">
+                        <div class="space-y-2 max-h-60 overflow-y-auto">
                             ${users.map(u => `
-                                <div class="p-3 bg-stone-900/90 rounded-2xl border flex flex-col md:flex-row justify-between items-start md:items-center gap-2">
+                                <div class="p-3 bg-stone-900/90 rounded-2xl border flex justify-between items-center">
                                     <div>
                                         <div class="font-bold text-amber-100">${u.pseudo || u.username} (${u.role})</div>
-                                        <div class="text-[10px] text-amber-200/60">Identifiant : <b>${u.username}</b> | MDP actuel : <code class="text-amber-400 bg-stone-950 px-1.5 py-0.5 rounded font-bold">${u.password}</code> | Naissance : ${u.birthDate || 'Non renseignée'}</div>
+                                        <div class="text-[10px] text-amber-200/65">ID : <b>${u.username}</b> | MDP : <code class="text-amber-400 bg-stone-950 px-1 rounded font-bold">${u.password}</code></div>
                                     </div>
                                     <div class="flex items-center gap-1">
                                         <select onchange="adminChangeRole('${u.username}', this.value)" class="p-1.5 bg-stone-950 border rounded-lg text-amber-300 font-bold">
@@ -817,158 +1013,153 @@
                             `).join('')}
                         </div>
                     </div>
-
-                    <!-- 5. HISTORIQUES ADMIN (SONDAGES & IDÉES) -->
-                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-clock-rotate-left mr-2"></i>Historique Admin (Sondages & Boîte à Idées)</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="space-y-2">
-                                <h4 class="font-bold text-amber-200">Historique des Sondages</h4>
-                                <div class="max-h-36 overflow-y-auto space-y-1 p-2 bg-stone-950 rounded-xl border">
-                                    ${polls.map(p => `<div class="p-2 bg-stone-900 rounded border text-[11px]"><b>${p.question}</b><br>Expire le : ${new Date(p.expiresAt).toLocaleString()}</div>`).join('')}
-                                </div>
-                            </div>
-                            <div class="space-y-2">
-                                <h4 class="font-bold text-amber-200">Historique Boîte à Idées</h4>
-                                <div class="max-h-36 overflow-y-auto space-y-1 p-2 bg-stone-950 rounded-xl border">
-                                    ${ideas.map(i => `<div class="p-2 bg-stone-900 rounded border text-[11px]"><b>${i.title}</b> (Par ${i.author})<br>👍 ${i.forVotes || 0} | 👎 ${i.againstVotes || 0}</div>`).join('')}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- 6. UPLOAD QR CODE & VISIBILITÉ ONGLETS -->
-                    <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>Uploader le QR Code de l'Accueil</h3>
-                        <form onsubmit="saveHomeQRCode(event)" class="space-y-2">
-                            <input type="file" id="adm-qrcode-file" accept="image/*" required class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
-                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Mettre à jour le QR Code</button>
-                        </form>
-                    </div>
-
-                    <!-- 7. SURVEILLANCE SECRÈTE DES MESSAGES -->
-                    <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-user-secret mr-2"></i>Modération & Surveillance des Mails / MP</h3>
-                        <div class="max-h-36 overflow-y-auto space-y-2 p-3 bg-stone-950 rounded-2xl border">
-                            ${allMsgs.filter(m => m.type === 'private').length === 0 ? '<p class="text-amber-200/50 italic">Aucun message privé échangé.</p>' : ''}
-                            ${allMsgs.filter(m => m.type === 'private').map(m => `
-                                <div class="p-2 bg-stone-900 rounded-xl flex justify-between border">
-                                    <span><b>${m.sender}</b> vers <b>${m.recipient}</b> : ${m.text}</span>
-                                    <span class="text-amber-400/60">${m.time}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        async function setThemePreset(btnColor, cardBg, borderColor) {
-            await DB.set('site_theme', { btnColor, cardBg, borderColor });
-            showToast("Thème appliqué !", "Le nouveau thème visuel est actif.");
-        }
-
-        async function adminCreatePoll(e) {
-            e.preventDefault();
-            let question = document.getElementById('poll-quest').value;
-            let opt1 = document.getElementById('poll-opt1').value;
-            let opt2 = document.getElementById('poll-opt2').value;
-            let days = parseInt(document.getElementById('poll-days').value) || 0;
-            let hours = parseInt(document.getElementById('poll-hours').value) || 0;
-            let mins = parseInt(document.getElementById('poll-mins').value) || 0;
-
-            let durationMs = (days * 24 * 3600 + hours * 3600 + mins * 60) * 1000;
-            if (durationMs <= 0) durationMs = 3600 * 1000; // 1h min
-
-            let polls = DB.get('polls') || [];
-            polls.unshift({
-                question,
-                options: [{ text: opt1, votes: 0 }, { text: opt2, votes: 0 }],
-                expiresAt: new Date(Date.now() + durationMs).toISOString(),
-                voters: []
-            });
-
-            await DB.set('polls', polls);
-            await pushGlobalNotification("Nouveau Sondage !", `Un nouveau sondage vient d'être publié : "${question}".`);
-            showToast("Sondage lancé !", "Le sondage est en direct.");
-        }
-
-        async function adminUploadRevision(e) {
-            e.preventDefault();
-            let title = document.getElementById('rev-title').value;
-            let file = document.getElementById('rev-file').files[0];
-            let url = document.getElementById('rev-url').value;
-
-            let fileData = url;
-            if (file) {
-                fileData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); });
+                `;
             }
 
-            let sheets = DB.get('revision_sheets') || [];
-            sheets.push({ title, fileData, fileType: file ? file.type : 'url' });
-            await DB.set('revision_sheets', sheets);
+            if (state.adminSub === 'appreciations') {
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-file-signature mr-2"></i>Saisie & Publication des Appréciations Trimestrielles</h3>
+                        <div class="space-y-4 max-h-96 overflow-y-auto pr-2">
+                            ${users.filter(u => u.role === 'student').map(u => {
+                                let uApps = apps[u.username] || {};
+                                return `
+                                    <div class="p-4 bg-stone-900/90 rounded-2xl border space-y-3">
+                                        <h4 class="font-bold text-amber-400 text-sm">${u.pseudo || u.username} (${u.realName || u.username})</h4>
+                                        <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                            ${['T1', 'T2', 'T3'].map(tKey => {
+                                                let appData = uApps[tKey] || { text: '', published: false };
+                                                return `
+                                                    <div class="p-3 bg-stone-950 rounded-xl border space-y-2">
+                                                        <div class="flex justify-between items-center font-bold text-amber-200">
+                                                            <span>${tKey}</span>
+                                                            <button onclick="togglePublishAppreciation('${u.username}', '${tKey}')" class="px-2 py-0.5 text-[9px] rounded font-bold ${appData.published?'bg-green-500/20 text-green-300':'bg-stone-800 text-amber-200/60'}">${appData.published?'Publié':'Masqué'}</button>
+                                                        </div>
+                                                        <textarea id="app-${u.username}-${tKey}" class="w-full p-2 bg-stone-900 border rounded-lg text-amber-100 text-xs h-16 resize-none" placeholder="Appréciation...">${appData.text || ''}</textarea>
+                                                        <button onclick="saveAppreciation('${u.username}', '${tKey}')" class="w-full py-1 dyn-btn text-white font-bold rounded-lg text-[10px]">Enregistrer ${tKey}</button>
+                                                    </div>
+                                                `;
+                                            }).join('')}
+                                        </div>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
 
-            await pushGlobalNotification("Nouvelle Fiche de Révision", `La fiche "${title}" est disponible dans l'onglet Fiches !`);
+            if (state.adminSub === 'surveillance') {
+                let pMsgs = msgs.filter(m => m.type === 'private');
+                let convs = {};
+                pMsgs.forEach(m => {
+                    let key = [m.sender, m.recipient].sort().join(' <-> ');
+                    if (!convs[key]) convs[key] = [];
+                    convs[key].push(m);
+                });
+
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-user-secret mr-2"></i>Surveillance des Conversations Privées & Mails</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div class="space-y-2 max-h-80 overflow-y-auto">
+                                <h4 class="font-bold text-amber-200 text-xs">Conversations Privées</h4>
+                                ${Object.keys(convs).length === 0 ? '<p class="text-amber-200/40 italic">Aucun MP.</p>' : ''}
+                                ${Object.keys(convs).map(k => `
+                                    <div onclick="state.activeConvFilter='${k}';render()" class="p-2.5 rounded-xl border cursor-pointer ${state.activeConvFilter===k?'bg-amber-500/20 border-amber-400':'bg-stone-900 border-amber-900/30'}">
+                                        <b class="text-amber-300">${k}</b>
+                                        <p class="text-[10px] text-amber-200/60">${convs[k].length} message(s)</p>
+                                    </div>
+                                `).join('')}
+                            </div>
+                            <div class="md:col-span-2 space-y-2 max-h-80 overflow-y-auto p-3 bg-stone-950 rounded-2xl border">
+                                <h4 class="font-bold text-amber-200 text-xs border-b border-amber-900/40 pb-2">Contenu de la conversation sélectionnée</h4>
+                                ${state.activeConvFilter && convs[state.activeConvFilter] ? convs[state.activeConvFilter].map(m => `
+                                    <div class="p-2 bg-stone-900 rounded-xl border space-y-1">
+                                        <div class="flex justify-between text-[10px] text-amber-400">
+                                            <b>${m.sender} ➔ ${m.recipient}</b>
+                                            <span>${m.time}</span>
+                                        </div>
+                                        <p class="text-amber-100">${m.text}</p>
+                                    </div>
+                                `).join('') : '<p class="text-amber-200/40 italic py-10 text-center">Cliquez sur une conversation à gauche pour lire les messages.</p>'}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'themes') {
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-palette mr-2"></i>Thèmes Saisonniers & Décors Animés</h3>
+                        <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
+                            <button onclick="setThemePreset('noel', '#dc2626', 'rgba(20, 10, 10, 0.95)', 'rgba(220, 38, 38, 0.4)', 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-red-400 text-left">🎄 Noël (Sapins, Cadeaux, Flocons)</button>
+                            <button onclick="setThemePreset('halloween', '#ea580c', 'rgba(20, 10, 5, 0.95)', 'rgba(234, 88, 12, 0.4)', 'https://images.unsplash.com/photo-1508361001413-7a9dca21d08a?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-orange-400 text-left">🎃 Halloween (Citrouilles, Sorcières)</button>
+                            <button onclick="setThemePreset('ete', '#0284c7', 'rgba(10, 15, 25, 0.95)', 'rgba(2, 132, 199, 0.4)', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-sky-400 text-left">🏖️ Été (Plage, Soleil, Vagues)</button>
+                            <button onclick="setThemePreset('automne', '#d97706', 'rgba(20, 15, 10, 0.95)', 'rgba(217, 119, 6, 0.4)', 'https://images.unsplash.com/photo-1507181179412-1e89ed9677a4?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-500 text-left">🍂 Automne (Feuilles mortes)</button>
+                            <button onclick="setThemePreset('hiver', '#38bdf8', 'rgba(10, 20, 30, 0.95)', 'rgba(56, 189, 248, 0.4)', 'https://images.unsplash.com/photo-1483664852095-d6cc6870702d?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-cyan-300 text-left">❄️ Hiver (Neige fine)</button>
+                            <button onclick="setThemePreset('printemps', '#16a34a', 'rgba(10, 20, 10, 0.95)', 'rgba(34, 197, 94, 0.4)', 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-green-400 text-left">🌸 Printemps / Pâques (Fleurs, Œufs)</button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'pubs') {
+                return `
+                    <div class="space-y-4">
+                        <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                            <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-file-pdf mr-2"></i>Publier un Sujet Type Bac & Corrigé</h3>
+                            <form onsubmit="adminUploadExam(event)" class="space-y-2">
+                                <input type="text" id="ex-title" required placeholder="Titre de l'épreuve..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <input type="file" id="ex-file" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
+                                <input type="url" id="ex-url" placeholder="Ou lien URL externe..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier le Sujet Bac</button>
+                            </form>
+                        </div>
+                        <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                            <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-book-open mr-2"></i>Publier une Fiche de Révision</h3>
+                            <form onsubmit="adminUploadRevision(event)" class="space-y-2">
+                                <input type="text" id="rev-title" required placeholder="Titre de la fiche..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <input type="file" id="rev-file" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
+                                <input type="url" id="rev-url" placeholder="Ou lien URL externe..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier la Fiche de Révision</button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+            }
+
+            return `<div class="dyn-card border p-6 rounded-3xl text-center text-amber-200/50">Sélectionnez un onglet dans le panneau administration.</div>`;
         }
 
-        async function adminCreateUser(e) {
-            e.preventDefault();
-            let username = document.getElementById('uc-user').value.trim();
-            let password = document.getElementById('uc-pass').value.trim();
-            let role = document.getElementById('uc-role').value;
+        async function saveAppreciation(username, tKey) {
+            let text = document.getElementById(`app-${username}-${tKey}`).value;
+            let apps = DB.get('appreciations') || {};
+            if (!apps[username]) apps[username] = {};
+            if (!apps[username][tKey]) apps[username][tKey] = { text: '', published: false };
 
-            let users = DB.get('users') || [];
-            if (users.some(u => u.username === username)) return alert("Cet identifiant existe déjà !");
-
-            users.push({ username, password, role, status: 'active', mustChangePass: true, realName: username, pseudo: username, birthDate: '2009-01-01' });
-            await DB.set('users', users);
-            showToast("Compte créé !", `Le compte ${username} a été créé avec un MDP provisoire.`);
+            apps[username][tKey].text = text;
+            await DB.set('appreciations', apps);
+            showToast("Appréciation enregistrée !", `Trimestre ${tKey} mis à jour pour ${username}.`);
         }
 
-        async function adminChangeRole(username, newRole) {
-            let users = DB.get('users') || [];
-            let u = users.find(x => x.username === username);
-            if (u) { u.role = newRole; await DB.set('users', users); showToast("Rôle mis à jour", `${username} est désormais ${newRole}.`); }
+        async function togglePublishAppreciation(username, tKey) {
+            let apps = DB.get('appreciations') || {};
+            if (!apps[username]) apps[username] = {};
+            if (!apps[username][tKey]) apps[username][tKey] = { text: '', published: false };
+
+            apps[username][tKey].published = !apps[username][tKey].published;
+            await DB.set('appreciations', apps);
+            showToast("Statut de publication modifié", "");
+            render();
         }
 
-        async function adminResetPassword(username) {
-            let newPass = prompt("Nouveau mot de passe provisoire pour " + username + " :");
-            if (!newPass) return;
-            let users = DB.get('users') || [];
-            let u = users.find(x => x.username === username);
-            if (u) { u.password = newPass; u.mustChangePass = true; await DB.set('users', users); showToast("Mot de passe réinitialisé", `Le nouveau MDP provisoire est ${newPass}`); }
+        async function setThemePreset(preset, btnColor, cardBg, borderColor, bgUrl) {
+            await DB.set('site_theme', { preset, btnColor, cardBg, borderColor, bgUrl });
+            showToast("Thème appliqué !", "Le décor et les animations saisonnières sont actifs.");
         }
 
-        async function adminToggleSuspend(username) {
-            let users = DB.get('users') || [];
-            let u = users.find(x => x.username === username);
-            if (u) { u.status = u.status === 'masked' ? 'active' : 'masked'; await DB.set('users', users); render(); }
-        }
-
-        async function saveHomeQRCode(e) {
-            e.preventDefault();
-            let file = document.getElementById('adm-qrcode-file').files[0];
-            if (!file) return;
-            let reader = new FileReader();
-            reader.onload = async function(ev) {
-                await DB.set('home_qr_image', ev.target.result);
-                showToast("QR Code mis à jour !", "Affiché sur la page d'accueil.");
-            };
-            reader.readAsDataURL(file);
-        }
-
-        // --- COMPOSANTS SECONDAIRES ---
-        function renderMoodTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-2xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Mur des Humeurs</h2></div>`; }
-        function renderNotifsSection(u) {
-            let notifs = DB.get('app_notifications') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto space-y-3">
-                <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-bell mr-2"></i>Centre des Notifications</h2>
-                <div class="space-y-2">
-                    ${notifs.map(n => `<div class="p-3 bg-stone-900 rounded-xl border text-xs"><b class="text-amber-300">${n.title}</b> (${n.date})<p class="text-amber-100 mt-1">${n.message}</p></div>`).join('')}
-                </div>
-            </div>`;
-        }
-        function renderQuizzesTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-2xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Quiz & Évaluations</h2></div>`; }
         function renderDocPage(t, items) {
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-book-open mr-2"></i>${t}</h2></div>
@@ -977,12 +1168,64 @@
                 </div>
             </div>`;
         }
-        function renderExamsTab() { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h3 class="font-bold text-amber-400">Sujets Bac</h3></div>`; }
-        function renderIdeasPage(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-2xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Boîte à Idées (Vote 48h)</h2></div>`; }
-        function renderLeaderboardSection(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h3 class="font-bold text-amber-400">Classement Classe</h3></div>`; }
-        function renderChat(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h3 class="font-bold text-amber-400">Messagerie</h3></div>`; }
-        function renderTicketsTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h3 class="font-bold text-amber-400">Support & Mails</h3></div>`; }
-        function renderProfileTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-2xl mx-auto"><h3 class="font-bold text-amber-400">Profil de ${u.username}</h3></div>`; }
+
+        async function adminUploadExam(e) {
+            e.preventDefault();
+            let title = document.getElementById('ex-title').value;
+            let file = document.getElementById('ex-file').files[0];
+            let url = document.getElementById('ex-url').value;
+            let fileData = url;
+            if (file) { fileData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); }); }
+            let subjects = DB.get('exam_subjects') || [];
+            subjects.push({ title, fileData, fileType: file ? file.type : 'url' });
+            await DB.set('exam_subjects', subjects);
+            showToast("Sujet Bac publié !", "");
+        }
+
+        async function adminUploadRevision(e) {
+            e.preventDefault();
+            let title = document.getElementById('rev-title').value;
+            let file = document.getElementById('rev-file').files[0];
+            let url = document.getElementById('rev-url').value;
+            let fileData = url;
+            if (file) { fileData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); }); }
+            let sheets = DB.get('revision_sheets') || [];
+            sheets.push({ title, fileData, fileType: file ? file.type : 'url' });
+            await DB.set('revision_sheets', sheets);
+            showToast("Fiche publiée !", "");
+        }
+
+        async function adminCreateUser(e) {
+            e.preventDefault();
+            let username = document.getElementById('uc-user').value.trim();
+            let password = document.getElementById('uc-pass').value.trim();
+            let role = document.getElementById('uc-role').value;
+            let users = DB.get('users') || [];
+            if (users.some(u => u.username === username)) return alert("Identifiant existant");
+            users.push({ username, password, role, status: 'active', mustChangePass: true, realName: username, pseudo: username });
+            await DB.set('users', users);
+            showToast("Compte créé !", "");
+        }
+
+        async function adminChangeRole(username, newRole) {
+            let users = DB.get('users') || [];
+            let u = users.find(x => x.username === username);
+            if (u) { u.role = newRole; await DB.set('users', users); showToast("Rôle mis à jour", ""); }
+        }
+
+        async function adminResetPassword(username) {
+            let newPass = prompt("Nouveau mot de passe provisoire :");
+            if (!newPass) return;
+            let users = DB.get('users') || [];
+            let u = users.find(x => x.username === username);
+            if (u) { u.password = newPass; u.mustChangePass = true; await DB.set('users', users); showToast("MDP réinitialisé", ""); }
+        }
+
+        async function adminToggleSuspend(username) {
+            let users = DB.get('users') || [];
+            let u = users.find(x => x.username === username);
+            if (u) { u.status = u.status === 'masked' ? 'active' : 'masked'; await DB.set('users', users); render(); }
+        }
 
         async function handleLogin(e) {
             e.preventDefault();
