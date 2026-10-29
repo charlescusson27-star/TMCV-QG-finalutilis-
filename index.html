@@ -98,7 +98,7 @@
             revision_sheets: [],
             exam_subjects: [],
             formations: [],
-            tickets: [],
+            mails: [],
             appreciations: {},
             flashcards_decks: [],
             personal_notes: {},
@@ -128,18 +128,10 @@
             targetUser: null,
             adminSub: 'users',
             activeConvFilter: null,
-            gameFilter: 'all',
             activeDeckId: null,
             activeNoteId: null,
-            aiMessages: [{ sender: 'ai', text: 'Bonjour ! Je suis ton Tuteur IA spécialisé en Droit, Économie, Gestion et Commerce. Pose-moi tes questions de révision pour le Bac Pro MCV !' }]
+            mailSubTab: 'inbox'
         };
-
-        const PLAYABLE_GAMES = [
-            { id: 'chef_rayon', name: 'Chef de Rayon MCV', cat: 'ludo', icon: 'fa-boxes-packing', desc: 'Implantation des produits selon le merchandising.', rules: '<b>But :</b> Placer chaque article au bon niveau du linéaire.', type: 'chef_rayon' },
-            { id: 'demineur_juridique', name: 'Démineur Juridique', cat: 'ludo', icon: 'fa-scale-balanced', desc: 'Identifier les clauses légales vs abusives.', rules: '<b>But :</b> Analyser des clauses de contrats de travail.', type: 'quiz' },
-            { id: 'calcul_marge', name: 'Calculateur de Marge', cat: 'ludo', icon: 'fa-calculator', desc: 'Maîtriser les indicateurs commerciaux.', rules: '<b>But :</b> Calculer prix de vente, coût d\'achat et marge.', type: 'quiz' },
-            { id: 'clicker_caisse', name: 'Clicker du Vendeur Rapide', cat: 'chill', icon: 'fa-hand-pointer', desc: 'Encaisse le maximum d\'articles en 15 secondes !', rules: '<b>But :</b> Cliquer frénétiquement pour encaisser.', type: 'clicker' }
-        ];
 
         async function init() {
             try {
@@ -332,7 +324,7 @@
                         ${!hidden.includes('mood') ? sbBtn('mood', 'Mur des Humeurs', 'face-smile') : ''}
                         ${!hidden.includes('notifs') ? sbBtn('notifs', 'Centre Notifications', 'bell') : ''}
                         ${!hidden.includes('polls') ? sbBtn('polls', 'Sondages en Direct', 'square-poll-vertical') : ''}
-                        ${!hidden.includes('games') ? sbBtn('games', 'Espace Arcade & Jeux', 'gamepad') : ''}
+                        ${!hidden.includes('games') ? sbBtn('games', 'Mots Croisés MCV', 'puzzle-piece') : ''}
                         ${!hidden.includes('revisions') ? sbBtn('revisions', 'Fiches de Révision', 'book-open') : ''}
                         ${!hidden.includes('exams') ? sbBtn('exams', 'Sujets & Corrigés Bac', 'file-pdf') : ''}
                         ${!hidden.includes('formations') ? sbBtn('formations', 'Orientation & Post-Bac', 'graduation-cap') : ''}
@@ -340,7 +332,6 @@
                         ${!hidden.includes('flashcards') ? sbBtn('flashcards', 'Flashcards Mémoire', 'clone') : ''}
                         ${!hidden.includes('notes') ? sbBtn('notes', 'Traitement de Texte (Notes)', 'file-lines') : ''}
                         ${!hidden.includes('bac_sim') ? sbBtn('bac_sim', 'Simulateur Bac Complet', 'calculator') : ''}
-                        ${!hidden.includes('ai_tuteur') ? sbBtn('ai_tuteur', 'Tuteur IA', 'robot') : ''}
                         ${!hidden.includes('leaderboard') ? sbBtn('leaderboard', 'Classement Classe', 'trophy') : ''}
                         ${!hidden.includes('chat') ? sbBtn('chat', 'Messagerie & Canal', 'comments') : ''}
                         ${!hidden.includes('tickets') ? sbBtn('tickets', 'Support & Mails', 'envelope') : ''}
@@ -362,7 +353,7 @@
             if (state.tab === 'mood') return renderMoodTab(user);
             if (state.tab === 'notifs') return renderNotifsSection(user);
             if (state.tab === 'polls') return renderPollsTab(user);
-            if (state.tab === 'games') return renderGamesSection();
+            if (state.tab === 'games') return renderCrosswordsSection();
             if (state.tab === 'revisions') return renderDocPage('Fiches de Révision', DB.get('revision_sheets') || []);
             if (state.tab === 'exams') return renderDocPage('Sujets & Corrigés Bac', DB.get('exam_subjects') || []);
             if (state.tab === 'formations') return renderFormationsTab(user);
@@ -370,7 +361,6 @@
             if (state.tab === 'flashcards') return renderFlashcardsTab(user);
             if (state.tab === 'notes') return renderNotesTab(user);
             if (state.tab === 'bac_sim') return renderBacSimTab(user);
-            if (state.tab === 'ai_tuteur') return renderAiTuteurSection();
             if (state.tab === 'leaderboard') return renderLeaderboardSection(user);
             if (state.tab === 'chat') return renderChat(user);
             if (state.tab === 'tickets') return renderTicketsTab(user);
@@ -404,26 +394,27 @@
             </div>`;
         }
 
-        // --- MUR DES HUMEURS ---
-        function renderMoodTab(user) {
-            let moods = DB.get('moods') || {};
-            let emojis = ['😀', '🚀', '💡', '🔥', '😴', '🧠', '🎯', '☕', '😎', '📚'];
-            return `<div class="max-w-2xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3 text-center">
-                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-face-smile mr-2"></i>Mur des Humeurs de la Classe</h2>
-                    <p class="text-amber-200/70">Quelle est ton humeur ou ton emoji du jour ?</p>
-                    <div class="flex flex-wrap justify-center gap-2 pt-2">
-                        ${emojis.map(e => `<button onclick="setMood('${e}')" class="p-3 bg-stone-900 border rounded-2xl text-xl hover:scale-110 transition">${e}</button>`).join('')}
-                    </div>
+        // --- NOTIFICATIONS SECTION ---
+        function renderNotifsSection(user) {
+            let notifs = DB.get('app_notifications') || [];
+            let myNotifs = notifs.filter(n => n.target === 'all' || n.target === user.username);
+
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-2">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-bell mr-2"></i>Centre de Notifications</h2>
+                    <p class="text-amber-200/70">Retrouvez toutes les alertes et annonces importantes de la plateforme.</p>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    ${Object.keys(moods).length === 0 ? '<p class="text-amber-200/50 text-center col-span-2">Aucune humeur partagée aujourd\'hui.</p>' : ''}
-                    ${Object.entries(moods).map(([uname, data]) => `
-                        <div class="dyn-card border p-4 rounded-2xl flex items-center gap-3">
-                            <span class="text-3xl">${data.emoji}</span>
-                            <div>
-                                <h4 class="font-bold text-amber-100">${uname}</h4>
-                                <p class="text-[10px] text-amber-200/60">${data.date}</p>
+                <div class="space-y-3">
+                    ${myNotifs.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune notification pour le moment.</p>' : ''}
+                    ${myNotifs.map(n => `
+                        <div class="dyn-card border p-4 rounded-2xl flex items-start gap-3">
+                            <div class="p-2 bg-amber-500/20 text-amber-400 rounded-xl"><i class="fa-solid fa-circle-info"></i></div>
+                            <div class="flex-1">
+                                <div class="flex justify-between items-center">
+                                    <h4 class="font-bold text-amber-200 text-sm">${n.title}</h4>
+                                    <span class="text-[10px] text-amber-200/50">${n.date}</span>
+                                </div>
+                                <p class="text-amber-100 mt-1">${n.message}</p>
                             </div>
                         </div>
                     `).join('')}
@@ -431,12 +422,52 @@
             </div>`;
         }
 
-        async function setMood(emoji) {
-            let user = getCurrentUser();
+        // --- MUR DES HUMEURS ---
+        function renderMoodTab(user) {
             let moods = DB.get('moods') || {};
-            moods[user.username] = { emoji, date: new Date().toLocaleDateString('fr-FR') };
+            let emojis = ['😀', '🚀', '💡', '🔥', '😴', '🧠', '🎯', '☕', '😎', '📚'];
+            return `<div class="max-w-2xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-3 text-center">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-face-smile mr-2"></i>Mur des Humeurs de la Classe</h2>
+                    <p class="text-amber-200/70">Choisis ton emoji et décris ton humeur du jour :</p>
+                    <form onsubmit="setMoodForm(event)" class="space-y-3 max-w-md mx-auto pt-2">
+                        <div class="flex justify-center gap-2 flex-wrap">
+                            ${emojis.map(e => `
+                                <label class="cursor-pointer">
+                                    <input type="radio" name="mood_emoji" value="${e}" class="peer hidden" required>
+                                    <span class="p-3 bg-stone-900 border rounded-2xl text-xl inline-block peer-checked:border-amber-400 peer-checked:bg-amber-500/20 hover:scale-110 transition">${e}</span>
+                                </label>
+                            `).join('')}
+                        </div>
+                        <input type="text" id="mood-text" required placeholder="Ton humeur en quelques mots (ex: Motivé pour réussir)..." class="w-full p-3 bg-stone-900 border rounded-xl text-amber-100">
+                        <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Partager mon humeur</button>
+                    </form>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    ${Object.keys(moods).length === 0 ? '<p class="text-amber-200/50 text-center col-span-2">Aucune humeur partagée aujourd\'hui.</p>' : ''}
+                    ${Object.entries(moods).map(([uname, data]) => `
+                        <div class="dyn-card border p-4 rounded-2xl flex items-center gap-4">
+                            <span class="text-4xl">${data.emoji}</span>
+                            <div class="overflow-hidden">
+                                <h4 class="font-bold text-amber-100">${uname}</h4>
+                                <p class="text-xs text-amber-300 font-medium italic">"${data.text}"</p>
+                                <p class="text-[9px] text-amber-200/50 mt-1">${data.date}</p>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        }
+
+        async function setMoodForm(e) {
+            e.preventDefault();
+            let user = getCurrentUser();
+            let emoji = document.querySelector('input[name="mood_emoji"]:checked').value;
+            let text = document.getElementById('mood-text').value.trim();
+            let moods = DB.get('moods') || {};
+            moods[user.username] = { emoji, text, date: new Date().toLocaleDateString('fr-FR') };
             await DB.set('moods', moods);
-            showToast("Humeur enregistrée !", "Ton emoji du jour est en ligne.");
+            showToast("Humeur enregistrée !", "Ton humeur est en ligne sur le mur.");
         }
 
         // --- SONDAGES EN DIRECT ---
@@ -497,7 +528,79 @@
             showToast("Vote enregistré !", "Merci d'avoir participé au sondage.");
         }
 
-        // --- TRAITEMENT DE TEXTE PERSONNEL (COMPLET) ---
+        // --- MOTS CROISÉS (REMPLACE LES JEUX) ---
+        function renderCrosswordsSection() {
+            return `
+                <div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl max-w-4xl mx-auto text-xs">
+                    <div class="flex items-center justify-between border-b border-amber-900/40 pb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl"><i class="fa-solid fa-puzzle-piece"></i></div>
+                            <div>
+                                <h3 class="font-black text-lg text-amber-400">Mots Croisés MCV (Révisions)</h3>
+                                <p class="text-xs text-amber-200/60">Testez vos connaissances en Droit, Économie et Commerce.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div onclick="startCrossword('facile')" class="p-5 rounded-2xl bg-stone-900 border border-amber-900/40 hover:border-amber-400 cursor-pointer transition text-center space-y-2">
+                            <h4 class="font-black text-amber-300 text-sm">Niveau Facile</h4>
+                            <p class="text-[10px] text-amber-200/70">Notions de base de vente et d'agencement.</p>
+                            <button class="px-4 py-1.5 dyn-btn text-white font-bold rounded-xl text-xs">Jouer</button>
+                        </div>
+                        <div onclick="startCrossword('moyen')" class="p-5 rounded-2xl bg-stone-900 border border-amber-900/40 hover:border-amber-400 cursor-pointer transition text-center space-y-2">
+                            <h4 class="font-black text-amber-300 text-sm">Niveau Moyen</h4>
+                            <p class="text-[10px] text-amber-200/70">Calculs commerciaux et gestion.</p>
+                            <button class="px-4 py-1.5 dyn-btn text-white font-bold rounded-xl text-xs">Jouer</button>
+                        </div>
+                        <div onclick="startCrossword('difficile')" class="p-5 rounded-2xl bg-stone-900 border border-amber-900/40 hover:border-amber-400 cursor-pointer transition text-center space-y-2">
+                            <h4 class="font-black text-amber-300 text-sm">Niveau Difficile</h4>
+                            <p class="text-[10px] text-amber-200/70">Droit du travail et contrats complexes.</p>
+                            <button class="px-4 py-1.5 dyn-btn text-white font-bold rounded-xl text-xs">Jouer</button>
+                        </div>
+                    </div>
+                    <div id="crossword-container" class="hidden bg-stone-950 p-6 rounded-2xl border border-amber-500/40 space-y-4"></div>
+                </div>
+            `;
+        }
+
+        function startCrossword(level) {
+            let container = document.getElementById('crossword-container');
+            container.classList.remove('hidden');
+            let data = {
+                facile: { title: 'Niveau Facile', clues: [{ q: 'Action de présenter les produits en rayon (9 lettres)', a: 'MERCHANDISING' }, { q: 'Somme payée par le client en caisse (5 lettres)', a: 'PRIX' }] },
+                moyen: { title: 'Niveau Moyen', clues: [{ q: 'Différence entre le prix de vente et le coût d\'achat (5 lettres)', a: 'MARGE' }, { q: 'Taux appliqué sur la valeur ajoutée (3 lettres)', a: 'TVA' }] },
+                difficile: { title: 'Niveau Difficile', clues: [{ q: 'Contrat de travail à durée indéterminée (3 lettres)', a: 'CDI' }, { q: 'Procédure de rupture conventionnelle ou licenciement (8 lettres)', a: 'RUPTURE' }] }
+            }[level];
+
+            container.innerHTML = `
+                <div class="flex justify-between items-center border-b border-amber-900/30 pb-3">
+                    <h4 class="font-black text-sm text-amber-400">Mots Croisés - ${data.title}</h4>
+                    <button onclick="document.getElementById('crossword-container').classList.add('hidden')" class="px-2 py-1 bg-red-900/40 text-red-300 rounded text-xs">Fermer</button>
+                </div>
+                <div class="space-y-3">
+                    ${data.clues.map((c, idx) => `
+                        <div class="p-3 bg-stone-900 rounded-xl border space-y-2">
+                            <p class="font-bold text-amber-100"><b>Définition ${idx+1} :</b> ${c.q}</p>
+                            <div class="flex gap-2">
+                                <input type="text" id="cw-${level}-${idx}" placeholder="Votre réponse..." class="p-2 bg-stone-950 border rounded-xl text-amber-300 font-bold uppercase flex-1">
+                                <button onclick="checkCrosswordAnswer('${level}', ${idx}, '${c.a}')" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Vérifier</button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        function checkCrosswordAnswer(level, idx, expected) {
+            let val = document.getElementById(`cw-${level}-${idx}`).value.trim().toUpperCase();
+            if (val === expected) {
+                alert("Bravo, c'est la bonne réponse ! 🌟");
+            } else {
+                alert("Ce n'est pas tout à fait correct, réessayez.");
+            }
+        }
+
+        // --- TRAITEMENT DE TEXTE PERSONNEL (NOTES) ---
         function renderNotesTab(user) {
             let notes = DB.get('personal_notes') || {};
             let userNotes = notes[user.username] || [];
@@ -570,7 +673,7 @@
             showToast("Document supprimé", "");
         }
 
-        // --- FLASHCARDS (MAX 100 CARTES, PUBLIC/PRIVÉ) ---
+        // --- FLASHCARDS ---
         function renderFlashcardsTab(user) {
             let decks = DB.get('flashcards_decks') || [];
             let visibleDecks = decks.filter(d => d.isPublic || d.author === user.username);
@@ -615,7 +718,7 @@
                         </div>
                     `).join('')}
                 </div>
-            </div>`;
+            `;
         }
 
         function addFlashcardRow() {
@@ -668,13 +771,13 @@
             </div>`;
         }
 
-        // --- SIMULATEUR DE NOTES BAC PRO COMPLET ---
+        // --- SIMULATEUR DE NOTES ---
         function renderBacSimTab(user) {
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl space-y-3">
                     <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-calculator mr-2"></i>Simulateur de Notes & Mention Bac Pro MCV</h2>
                     <p class="text-amber-200/70">Toutes les épreuves et matières officielles avec leurs coefficients.</p>
-                    <div class="space-y-2 max-h-72 overflow-y-auto pr-2" id="sim-matieres-list">
+                    <div class="space-y-2 max-h-72 overflow-y-auto pr-2">
                         ${[
                             { name: 'Épreuve E1 - Économie - Droit & Gestion', coef: 4 },
                             { name: 'Épreuve E2 - Analyse et résolution de situations professionnelles', coef: 7 },
@@ -712,107 +815,6 @@
             let resDiv = document.getElementById('sim-full-result');
             resDiv.classList.remove('hidden');
             resDiv.innerHTML = `<h3 class="text-lg font-black text-amber-400">Résultat de la simulation</h3><div class="text-3xl font-extrabold text-white mt-1">${avg} / 20</div><p class="text-sm font-bold text-amber-300 mt-2">Mention : ${mention}</p>`;
-        }
-
-        // --- ESPACE ARCADE ---
-        function renderGamesSection() {
-            return `
-                <div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl max-w-5xl mx-auto">
-                    <div class="flex items-center justify-between border-b border-amber-900/40 pb-4">
-                        <div class="flex items-center gap-3">
-                            <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl"><i class="fa-solid fa-gamepad"></i></div>
-                            <div>
-                                <h3 class="font-black text-lg text-amber-400">Espace Arcade & Jeux MCV</h3>
-                                <p class="text-xs text-amber-200/60">Jeux interactifs et stimulants.</p>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        ${PLAYABLE_GAMES.map(g => `
-                            <div onclick="launchGame('${g.id}')" class="p-5 rounded-2xl bg-stone-950/80 border border-amber-900/30 hover:border-amber-500 cursor-pointer transition flex justify-between items-center">
-                                <div>
-                                    <h4 class="text-xs font-black text-amber-100">${g.name}</h4>
-                                    <p class="text-[10px] text-amber-200/60 mt-1">${g.desc}</p>
-                                </div>
-                                <span class="dyn-btn px-4 py-2 text-white font-bold rounded-xl text-xs">Jouer</span>
-                            </div>
-                        `).join('')}
-                    </div>
-                    <div id="game-stage" class="hidden bg-stone-950 p-6 rounded-2xl border border-amber-500/40 space-y-4">
-                        <div class="flex justify-between items-center border-b border-amber-900/30 pb-3">
-                            <h4 id="active-game-title" class="font-black text-sm text-amber-300"></h4>
-                            <div class="flex items-center gap-4">
-                                <span class="text-xs">Score : <b id="active-game-score" class="text-amber-400">0</b> pts</span>
-                                <button onclick="closeActiveGame()" class="px-2 py-1 bg-red-900/40 text-red-300 rounded text-xs">Quitter</button>
-                            </div>
-                        </div>
-                        <div id="active-game-content" class="min-h-[180px] flex flex-col justify-center items-center text-center space-y-3"></div>
-                    </div>
-                </div>
-            `;
-        }
-
-        let gameInterval = null;
-        function launchGame(gameId) {
-            currentGameId = gameId;
-            currentGameScore = 0;
-            if (gameInterval) clearInterval(gameInterval);
-            let game = PLAYABLE_GAMES.find(g => g.id === gameId);
-            document.getElementById('active-game-title').innerText = game.name;
-            document.getElementById('active-game-score').innerText = currentGameScore;
-            document.getElementById('game-stage').classList.remove('hidden');
-
-            let c = document.getElementById('active-game-content');
-            if (gameId === 'clicker_caisse') {
-                let time = 15;
-                c.innerHTML = `<p class="text-xs">Encaisse un max d'articles !</p><div class="text-xl font-bold" id="c-time">15s</div><button onclick="currentGameScore+=5;document.getElementById('active-game-score').innerText=currentGameScore" class="px-6 py-3 dyn-btn text-white font-bold rounded-xl">🛒 ENCAISSER</button>`;
-                gameInterval = setInterval(() => {
-                    time--;
-                    let el = document.getElementById('c-time');
-                    if (el) el.innerText = time + 's';
-                    if (time <= 0) clearInterval(gameInterval);
-                }, 1000);
-            } else {
-                c.innerHTML = `<p class="text-xs">Question : Où placer les 1ers prix ?</p><div class="flex gap-2"><button onclick="checkGameMCQ(true)" class="px-4 py-2 bg-stone-900 border text-green-300 font-bold rounded-xl">Niveau Sol</button><button onclick="checkGameMCQ(false)" class="px-4 py-2 bg-stone-900 border text-red-300 font-bold rounded-xl">Niveau Yeux</button></div>`;
-            }
-        }
-
-        function checkGameMCQ(ok) {
-            if (ok) { currentGameScore += 20; document.getElementById('active-game-score').innerText = currentGameScore; alert("Bonne réponse ! +20 pts"); }
-            else { alert("Mauvaise réponse !"); }
-        }
-
-        function closeActiveGame() { if (gameInterval) clearInterval(gameInterval); document.getElementById('game-stage').classList.add('hidden'); }
-
-        // --- TUTEUR IA ---
-        function renderAiTuteurSection() {
-            return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs h-[540px] flex flex-col justify-between">
-                <div class="border-b border-amber-900/40 pb-3">
-                    <h2 class="text-lg font-black text-amber-400"><i class="fa-solid fa-robot mr-2"></i>Tuteur IA (Assistant Pédagogique MCV)</h2>
-                    <p class="text-amber-200/70">Pose tes questions sur le Droit, l'Économie, la Gestion et le Commerce.</p>
-                </div>
-                <div class="flex-1 overflow-y-auto space-y-3 p-3 bg-stone-900/60 rounded-2xl border">
-                    ${state.aiMessages.map(m => `<div class="p-3 rounded-2xl max-w-[80%] ${m.sender==='user'?'ml-auto bg-amber-600 text-white font-bold':'mr-auto bg-stone-950 text-amber-100 border'}">${m.text}</div>`).join('')}
-                </div>
-                <form onsubmit="sendAiMessage(event)" class="flex gap-2">
-                    <input type="text" id="ai-inp" required placeholder="Pose ta question..." class="flex-1 p-3 bg-stone-900 border rounded-xl text-amber-100">
-                    <button type="submit" class="dyn-btn px-6 text-white font-bold rounded-xl">Envoyer</button>
-                </form>
-            </div>`;
-        }
-
-        async function sendAiMessage(e) {
-            e.preventDefault();
-            let inp = document.getElementById('ai-inp');
-            let txt = inp.value.trim();
-            if (!txt) return;
-            state.aiMessages.push({ sender: 'user', text: txt });
-            inp.value = '';
-            render();
-            setTimeout(() => {
-                state.aiMessages.push({ sender: 'ai', text: `En Bac Pro MCV, retiens bien que la maîtrise de "${txt}" est fondamentale pour l'examen. Structure tes réponses avec des exemples précis !` });
-                render();
-            }, 800);
         }
 
         // --- CLASSEMENT ---
@@ -854,25 +856,76 @@
             render();
         }
 
-        // --- SUPPORT & MAILS ---
+        // --- MAILS ET SUPPORT AMÉLIORÉS ---
         function renderTicketsTab(user) {
-            let tickets = DB.get('tickets') || [];
+            let mails = DB.get('mails') || [];
+            let users = DB.get('users') || [];
+            let inbox = mails.filter(m => m.recipient === user.username || m.recipient === 'all');
+            let sent = mails.filter(m => m.sender === user.username);
+            let list = state.mailSubTab === 'inbox' ? inbox : sent;
+
             return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h2 class="text-xl font-black text-amber-400">Support & Mails</h2>
-                    <form onsubmit="sendSupportTicket(event)" class="space-y-2 p-4 bg-stone-900 rounded-2xl border"><input type="text" id="t-subject" required placeholder="Sujet..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100"><textarea id="t-msg" required placeholder="Message..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 h-20"></textarea><button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Envoyer</button></form>
+                <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                    <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                        <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-envelope mr-2"></i>Messagerie e-mail & Support</h2>
+                        <div class="flex gap-2">
+                            <button onclick="state.mailSubTab='inbox';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.mailSubTab==='inbox'?'dyn-btn text-white':'bg-stone-900 text-amber-200'}">Boîte de réception (${inbox.length})</button>
+                            <button onclick="state.mailSubTab='sent';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.mailSubTab==='sent'?'dyn-btn text-white':'bg-stone-900 text-amber-200'}">Envoyés (${sent.length})</button>
+                        </div>
+                    </div>
+                    
+                    <form onsubmit="sendMailMessage(event)" class="space-y-3 p-4 bg-stone-900/80 rounded-2xl border">
+                        <h3 class="font-bold text-amber-300">Rédiger un nouvel e-mail</h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <select id="mail-recipient" required class="p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                                <option value="">Choisir un destinataire...</option>
+                                <option value="all">📢 Tout le monde (Diffusion générale)</option>
+                                ${users.filter(u => u.username !== user.username).map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.role})</option>`).join('')}
+                            </select>
+                            <input type="text" id="mail-subject" required placeholder="Objet du mail..." class="p-2.5 bg-stone-950 border rounded-xl text-amber-100">
+                        </div>
+                        <textarea id="mail-body" required placeholder="Corps du texte..." class="w-full p-3 bg-stone-950 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
+                        <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Envoyer l'e-mail</button>
+                    </form>
                 </div>
-                <div class="space-y-3">${tickets.map(t => `<div class="dyn-card border p-4 rounded-2xl"><h3 class="font-bold text-amber-300">${t.subject}</h3><p>${t.message}</p></div>`).join('')}</div>
+
+                <div class="space-y-3">
+                    <h3 class="font-bold text-amber-300 text-sm">${state.mailSubTab==='inbox'?'Messages Reçus':'Messages Envoyés'}</h3>
+                    ${list.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucun e-mail dans cette section.</p>' : ''}
+                    ${list.map(m => `
+                        <div class="dyn-card border p-4 rounded-2xl space-y-2">
+                            <div class="flex justify-between items-center border-b border-amber-900/30 pb-2">
+                                <div>
+                                    <span class="font-bold text-amber-300">De : ${m.sender}</span> ➔ <span class="font-bold text-amber-200">Pour : ${m.recipient}</span>
+                                </div>
+                                <span class="text-[10px] text-amber-200/50">${m.date}</span>
+                            </div>
+                            <h4 class="font-bold text-white text-sm">Objet : ${m.subject}</h4>
+                            <p class="text-amber-100 whitespace-pre-line">${m.body}</p>
+                        </div>
+                    `).join('')}
+                </div>
             </div>`;
         }
 
-        async function sendSupportTicket(e) {
+        async function sendMailMessage(e) {
             e.preventDefault();
-            let user = getCurrentUser(), subject = document.getElementById('t-subject').value, message = document.getElementById('t-msg').value;
-            let tickets = DB.get('tickets') || [];
-            tickets.unshift({ author: user.username, subject, message, date: new Date().toLocaleDateString(), reply: '' });
-            await DB.set('tickets', tickets);
-            showToast("Mail envoyé !", "");
+            let user = getCurrentUser();
+            let recipient = document.getElementById('mail-recipient').value;
+            let subject = document.getElementById('mail-subject').value.trim();
+            let body = document.getElementById('mail-body').value.trim();
+            let mails = DB.get('mails') || [];
+
+            mails.unshift({
+                sender: user.username,
+                recipient,
+                subject,
+                body,
+                date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+            });
+
+            await DB.set('mails', mails);
+            showToast("E-mail envoyé !", "Votre message a bien été transmis.");
         }
 
         // --- PROFIL & AVATAR ---
@@ -908,12 +961,76 @@
             }
         }
 
-        // --- AUTRES MODULES ÉLÈVES ---
-        function renderFormationsTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Orientation Post-Bac</h2></div>`; }
-        function renderIdeasPage(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Boîte à Idées (Vote 48h)</h2></div>`; }
-        function renderQuizzesTab(u) { return `<div class="dyn-card border p-6 rounded-3xl max-w-3xl mx-auto"><h2 class="text-xl font-bold text-amber-400">Quiz & Évaluations</h2></div>`; }
+        // --- FORMATIONS & BOÎTE À IDÉES ---
+        function renderFormationsTab(u) {
+            let formations = DB.get('formations') || [];
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-2">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-graduation-cap mr-2"></i>Orientation & Formations Post-Bac</h2>
+                    <p class="text-amber-200/70">Découvrez les formations publiées par l'équipe pour préparer votre poursuite d'études.</p>
+                </div>
+                <div class="space-y-3">
+                    ${formations.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune formation publiée pour le moment.</p>' : ''}
+                    ${formations.map(f => `
+                        <div class="dyn-card border p-5 rounded-2xl space-y-2">
+                            <h3 class="font-bold text-amber-300 text-sm">${f.title}</h3>
+                            <p class="text-amber-100">${f.description}</p>
+                            ${f.link ? `<a href="${f.link}" target="_blank" class="text-amber-400 font-bold underline inline-block mt-1">Lien officiel / Documentation ➔</a>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        }
 
-        // --- CONSULTATION APPRÉCIATIONS (CÔTÉ ÉLÈVE) ---
+        function renderIdeasPage(user) {
+            let ideas = DB.get('ideas_board') || [];
+            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
+                <div class="dyn-card border p-6 rounded-3xl space-y-3">
+                    <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-lightbulb mr-2"></i>Boîte à Idées (Vote 48h)</h2>
+                    <form onsubmit="submitIdea(event)" class="space-y-2 p-4 bg-stone-900 rounded-2xl border">
+                        <input type="text" id="idea-title" required placeholder="Titre de votre idée..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100">
+                        <textarea id="idea-desc" required placeholder="Décrivez votre idée pour la classe..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 h-20 resize-none"></textarea>
+                        <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Soumettre l'idée</button>
+                    </form>
+                </div>
+                <div class="space-y-3">
+                    ${ideas.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune idée soumise.</p>' : ''}
+                    ${ideas.map((i, idx) => `
+                        <div class="dyn-card border p-4 rounded-2xl flex justify-between items-center">
+                            <div>
+                                <h3 class="font-bold text-amber-300 text-sm">${i.title} <span class="text-[9px] text-amber-200/50 font-normal ml-2">Par ${i.author}</span></h3>
+                                <p class="text-amber-100 mt-1">${i.description}</p>
+                            </div>
+                            <button onclick="voteIdea(${idx})" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">👍 (${i.votes || 0})</button>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        }
+
+        async function submitIdea(e) {
+            e.preventDefault();
+            let user = getCurrentUser();
+            let title = document.getElementById('idea-title').value.trim();
+            let description = document.getElementById('idea-desc').value.trim();
+            let ideas = DB.get('ideas_board') || [];
+            ideas.unshift({ title, description, author: user.pseudo || user.username, votes: 0, voters: [] });
+            await DB.set('ideas_board', ideas);
+            showToast("Idée soumise !", "Elle est maintenant visible pour les votes.");
+        }
+
+        async function voteIdea(idx) {
+            let user = getCurrentUser();
+            let ideas = DB.get('ideas_board') || [];
+            if (!ideas[idx].voters) ideas[idx].voters = [];
+            if (ideas[idx].voters.includes(user.username)) return alert("Vous avez déjà voté pour cette idée !");
+            ideas[idx].voters.push(user.username);
+            ideas[idx].votes = (ideas[idx].votes || 0) + 1;
+            await DB.set('ideas_board', ideas);
+            render();
+        }
+
+        // --- CONSULTATION APPRÉCIATIONS (ÉLÈVE) ---
         function renderUserAppreciations(user) {
             let apps = DB.get('appreciations') || {};
             let myApps = apps[user.username] || {};
@@ -938,16 +1055,15 @@
                                 ` : '<p class="text-amber-200/40 italic py-4">L\'appréciation de ce trimestre n\'a pas encore été publiée.</p>'}
                             </div>
                         `;
-                    })}
+                    }).join('')}
                 </div>
-            </div>`;
+            `;
         }
 
-        // --- PANNEAU ADMINISTRATEUR NAVIGABLE & SURVEILLANCE CLIQUABLE ---
+        // --- PANNEAU ADMINISTRATEUR NAVIGABLE ---
         function renderAdmin() {
             let users = DB.get('users') || [];
             let msgs = DB.get('messages') || [];
-            let tickets = DB.get('tickets') || [];
             let apps = DB.get('appreciations') || {};
 
             return `
@@ -958,15 +1074,17 @@
                         <div class="flex flex-wrap gap-2 border-t border-amber-900/40 pt-3">
                             ${adminNavBtn('users', 'Comptes Users', 'users-gear')}
                             ${adminNavBtn('appreciations', 'Appréciations', 'file-signature')}
-                            ${adminNavBtn('pubs', 'Publications (Sujets/Fiches)', 'file-pdf')}
+                            ${adminNavBtn('pubs', 'Publications', 'file-pdf')}
+                            ${adminNavBtn('formations', 'Formations', 'graduation-cap')}
                             ${adminNavBtn('polls', 'Sondages', 'square-poll-vertical')}
                             ${adminNavBtn('themes', 'Thèmes & Saisons', 'palette')}
-                            ${adminNavBtn('surveillance', 'Surveillance MP / Mails', 'user-secret')}
+                            ${adminNavBtn('surveillance', 'Surveillance MP', 'user-secret')}
+                            ${adminNavBtn('export', 'Export Données', 'download')}
                             ${adminNavBtn('qrcode', 'QR Code', 'qrcode')}
                         </div>
                     </div>
 
-                    ${renderAdminSubSection(users, msgs, tickets, apps)}
+                    ${renderAdminSubSection(users, msgs, apps)}
                 </div>
             `;
         }
@@ -976,7 +1094,7 @@
             return `<button onclick="state.adminSub='${subId}';render()" class="px-3.5 py-2 rounded-xl font-bold flex items-center gap-2 border transition ${active?'dyn-btn text-white border-amber-400':'bg-stone-900 text-amber-200/80 border-amber-900/40 hover:bg-stone-850'}"><i class="fa-solid fa-${icon}"></i> ${label}</button>`;
         }
 
-        function renderAdminSubSection(users, msgs, tickets, apps) {
+        function renderAdminSubSection(users, msgs, apps) {
             if (state.adminSub === 'users') {
                 return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
@@ -1060,7 +1178,7 @@
 
                 return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-user-secret mr-2"></i>Surveillance des Conversations Privées & Mails</h3>
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-user-secret mr-2"></i>Surveillance des Conversations Privées</h3>
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <div class="space-y-2 max-h-80 overflow-y-auto">
                                 <h4 class="font-bold text-amber-200 text-xs">Conversations Privées</h4>
@@ -1094,12 +1212,12 @@
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
                         <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-palette mr-2"></i>Thèmes Saisonniers & Décors Animés</h3>
                         <div class="grid grid-cols-2 md:grid-cols-3 gap-3">
-                            <button onclick="setThemePreset('noel', '#dc2626', 'rgba(20, 10, 10, 0.95)', 'rgba(220, 38, 38, 0.4)', 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-red-400 text-left">🎄 Noël (Sapins, Cadeaux, Flocons)</button>
-                            <button onclick="setThemePreset('halloween', '#ea580c', 'rgba(20, 10, 5, 0.95)', 'rgba(234, 88, 12, 0.4)', 'https://images.unsplash.com/photo-1508361001413-7a9dca21d08a?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-orange-400 text-left">🎃 Halloween (Citrouilles, Sorcières)</button>
-                            <button onclick="setThemePreset('ete', '#0284c7', 'rgba(10, 15, 25, 0.95)', 'rgba(2, 132, 199, 0.4)', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-sky-400 text-left">🏖️ Été (Plage, Soleil, Vagues)</button>
-                            <button onclick="setThemePreset('automne', '#d97706', 'rgba(20, 15, 10, 0.95)', 'rgba(217, 119, 6, 0.4)', 'https://images.unsplash.com/photo-1507181179412-1e89ed9677a4?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-500 text-left">🍂 Automne (Feuilles mortes)</button>
-                            <button onclick="setThemePreset('hiver', '#38bdf8', 'rgba(10, 20, 30, 0.95)', 'rgba(56, 189, 248, 0.4)', 'https://images.unsplash.com/photo-1483664852095-d6cc6870702d?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-cyan-300 text-left">❄️ Hiver (Neige fine)</button>
-                            <button onclick="setThemePreset('printemps', '#16a34a', 'rgba(10, 20, 10, 0.95)', 'rgba(34, 197, 94, 0.4)', 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-green-400 text-left">🌸 Printemps / Pâques (Fleurs, Œufs)</button>
+                            <button onclick="setThemePreset('noel', '#dc2626', 'rgba(20, 10, 10, 0.95)', 'rgba(220, 38, 38, 0.4)', 'https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-red-400 text-left">🎄 Noël</button>
+                            <button onclick="setThemePreset('halloween', '#ea580c', 'rgba(20, 10, 5, 0.95)', 'rgba(234, 88, 12, 0.4)', 'https://images.unsplash.com/photo-1508361001413-7a9dca21d08a?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-orange-400 text-left">🎃 Halloween</button>
+                            <button onclick="setThemePreset('ete', '#0284c7', 'rgba(10, 15, 25, 0.95)', 'rgba(2, 132, 199, 0.4)', 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-sky-400 text-left">🏖️ Été</button>
+                            <button onclick="setThemePreset('automne', '#d97706', 'rgba(20, 15, 10, 0.95)', 'rgba(217, 119, 6, 0.4)', 'https://images.unsplash.com/photo-1507181179412-1e89ed9677a4?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-500 text-left">🍂 Automne</button>
+                            <button onclick="setThemePreset('hiver', '#38bdf8', 'rgba(10, 20, 30, 0.95)', 'rgba(56, 189, 248, 0.4)', 'https://images.unsplash.com/photo-1483664852095-d6cc6870702d?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-cyan-300 text-left">❄️ Hiver</button>
+                            <button onclick="setThemePreset('printemps', '#16a34a', 'rgba(10, 20, 10, 0.95)', 'rgba(34, 197, 94, 0.4)', 'https://images.unsplash.com/photo-1490750967868-88aa4486c946?auto=format&fit=crop&w=1200&q=80')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-green-400 text-left">🌸 Printemps</button>
                         </div>
                     </div>
                 `;
@@ -1130,7 +1248,144 @@
                 `;
             }
 
-            return `<div class="dyn-card border p-6 rounded-3xl text-center text-amber-200/50">Sélectionnez un onglet dans le panneau administration.</div>`;
+            if (state.adminSub === 'formations') {
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-graduation-cap mr-2"></i>Publier une Formation Post-Bac</h3>
+                        <form onsubmit="adminUploadFormation(event)" class="space-y-3">
+                            <input type="text" id="form-title" required placeholder="Intitulé de la formation (ex: BTS MCO, BUT TC...)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            <textarea id="form-desc" required placeholder="Description détaillée..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
+                            <input type="url" id="form-link" placeholder="Lien d'information URL (optionnel)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier la Formation</button>
+                        </form>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'polls') {
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-square-poll-vertical mr-2"></i>Créer un Nouveau Sondage</h3>
+                        <form onsubmit="adminCreatePoll(event)" class="space-y-3">
+                            <input type="text" id="poll-q" required placeholder="Question du sondage..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <input type="text" id="poll-opt1" required placeholder="Option 1..." class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <input type="text" id="poll-opt2" required placeholder="Option 2..." class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            </div>
+                            <div>
+                                <label class="block text-amber-200 font-bold mb-1">Date et heure de fin (expiration) :</label>
+                                <input type="datetime-local" id="poll-exp" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            </div>
+                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Lancer le Sondage</button>
+                        </form>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'export') {
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-download mr-2"></i>Export des Données de la Plateforme</h3>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <button onclick="exportData('all_accounts')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left"><i class="fa-solid fa-users mr-2"></i> Exporter tous les comptes</button>
+                            <button onclick="exportData('polls')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left"><i class="fa-solid fa-square-poll-vertical mr-2"></i> Exporter les sondages</button>
+                            <button onclick="exportData('ideas')" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left"><i class="fa-solid fa-lightbulb mr-2"></i> Exporter la boîte à idées</button>
+                        </div>
+                        <div class="pt-4 border-t border-amber-900/40 space-y-2">
+                            <h4 class="font-bold text-amber-300">Exporter un compte spécifique :</h4>
+                            <div class="flex gap-2">
+                                <select id="export-username-select" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold flex-1">
+                                    ${users.map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.username})</option>`).join('')}
+                                </select>
+                                <button onclick="exportSingleAccount()" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">Exporter ce compte</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'qrcode') {
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>Gestion du QR Code de la Classe</h3>
+                        <form onsubmit="adminSaveQRCode(event)" class="space-y-3">
+                            <input type="file" id="qr-file" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 text-xs">
+                            <input type="url" id="qr-url" placeholder="Ou lien URL direct de l'image..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Mettre à jour le QR Code</button>
+                        </form>
+                    </div>
+                `;
+            }
+
+            return `<div class="dyn-card border p-6 rounded-3xl text-center text-amber-200/50">Sélectionnez une option dans le panneau d'administration.</div>`;
+        }
+
+        async function adminCreatePoll(e) {
+            e.preventDefault();
+            let question = document.getElementById('poll-q').value.trim();
+            let opt1 = document.getElementById('poll-opt1').value.trim();
+            let opt2 = document.getElementById('poll-opt2').value.trim();
+            let expiresAt = document.getElementById('poll-exp').value;
+
+            let polls = DB.get('polls') || [];
+            polls.unshift({
+                question,
+                options: [{ text: opt1, votes: 0 }, { text: opt2, votes: 0 }],
+                expiresAt,
+                voters: []
+            });
+            await DB.set('polls', polls);
+            showToast("Sondage lancé !", "Le sondage est en ligne pour les élèves.");
+        }
+
+        async function adminUploadFormation(e) {
+            e.preventDefault();
+            let title = document.getElementById('form-title').value.trim();
+            let description = document.getElementById('form-desc').value.trim();
+            let link = document.getElementById('form-link').value.trim();
+            let formations = DB.get('formations') || [];
+            formations.unshift({ title, description, link });
+            await DB.set('formations', formations);
+            showToast("Formation publiée !", "");
+        }
+
+        async function adminSaveQRCode(e) {
+            e.preventDefault();
+            let file = document.getElementById('qr-file').files[0];
+            let url = document.getElementById('qr-url').value;
+            let qrData = url;
+            if (file) {
+                qrData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); });
+            }
+            if (qrData) {
+                await DB.set('home_qr_image', qrData);
+                showToast("QR Code mis à jour !", "");
+            }
+        }
+
+        function exportData(type) {
+            let dataToExport = DB.get(type === 'all_accounts' ? 'users' : type);
+            let blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = `leqg_${type}_export.json`;
+            a.click();
+            showToast("Export réussi !", "Le fichier a été téléchargé.");
+        }
+
+        function exportSingleAccount() {
+            let uname = document.getElementById('export-username-select').value;
+            let users = DB.get('users') || [];
+            let u = users.find(x => x.username === uname);
+            if (!u) return;
+            let blob = new Blob([JSON.stringify(u, null, 2)], { type: 'application/json' });
+            let url = URL.createObjectURL(blob);
+            let a = document.createElement('a');
+            a.href = url;
+            a.download = `leqg_account_${uname}.json`;
+            a.click();
+            showToast("Export du compte réussi !", "");
         }
 
         async function saveAppreciation(username, tKey) {
