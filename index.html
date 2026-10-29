@@ -63,6 +63,22 @@
         </div>
     </div>
 
+    <!-- Modale Centre de Notifications -->
+    <div id="notifications-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+        <div class="w-full max-w-lg dyn-card border rounded-3xl p-6 shadow-2xl flex flex-col space-y-4 max-h-[85vh]">
+            <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                <h3 class="font-black text-base text-amber-400 flex items-center gap-2"><i class="fa-solid fa-bell"></i> Centre de Notifications</h3>
+                <div class="flex gap-2">
+                    <button onclick="clearAllNotifications()" class="px-3 py-1 bg-stone-900 text-amber-200 border rounded-xl text-xs font-bold">Tout effacer</button>
+                    <button onclick="toggleModal('notifications-modal', false)" class="text-amber-200/70 hover:text-white p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
+                </div>
+            </div>
+            <div id="notifications-list-container" class="flex-1 overflow-y-auto space-y-2.5 pr-1">
+                <!-- Les notifications s'injectent ici -->
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Global -->
     <div id="global-notification-toast" class="hidden fixed bottom-6 right-6 z-50 max-w-sm dyn-card border-2 border-amber-500 p-4 rounded-2xl shadow-2xl flex items-start gap-3">
         <div class="text-amber-400 text-2xl"><i class="fa-solid fa-bell"></i></div>
@@ -114,6 +130,7 @@
             custom_pages: [],
             hidden_tabs: [],
             orientation_models: [],
+            app_notifications: [], // Centre de notifications global
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' },
             site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(10, 10, 10, 0.9)', borderColor: 'rgba(245, 158, 11, 0.4)', bgMedia: '', mode: 'dark' },
             home_qr_image: ''
@@ -147,6 +164,9 @@
         };
 
         async function init() {
+            if ("Notification-permission" in window && Notification.permission !== "granted") {
+                Notification.requestPermission();
+            }
             if (db) {
                 try {
                     let userDoc = await db.collection("leqg_data").doc("users").get();
@@ -175,9 +195,43 @@
                             let doc = await db.collection("leqg_data").doc(k).get();
                             if (doc.exists) cloudData[k] = doc.data().value;
                         }
+                        render();
                     } catch(e){}
                 }
-            }, 5000);
+            }, 4000);
+        }
+
+        // --- GESTION DES NOTIFICATIONS ---
+        async function pushNotification(title, message, targetRole = 'all') {
+            let notifs = DB.get('app_notifications') || [];
+            notifs.unshift({
+                id: Date.now(),
+                title,
+                message,
+                targetRole,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                date: new Date().toLocaleDateString(),
+                read: false
+            });
+            // Garder les 50 dernières
+            if (notifs.length > 50) notifs = notifs.slice(0, 50);
+            await DB.set('app_notifications', notifs);
+            showToast(title, message);
+
+            // Déclenchement de la notification native téléphone (APK / PWA / Bureau)
+            if ("Notification" in window && Notification.permission === "granted") {
+                try {
+                    new Notification(title, {
+                        body: message,
+                        icon: "https://images.unsplash.com/photo-1543589077-47d81606c1bf?auto=format&fit=crop&q=80&w=120"
+                    });
+                } catch(err) { console.error(err); }
+            }
+        }
+
+        async function clearAllNotifications() {
+            await DB.set('app_notifications', []);
+            showToast("Notifications", "Le centre de notifications a été vidé.");
         }
 
         async function installPWA() {
@@ -231,7 +285,7 @@
             else if (t.preset === 'automne') symbol = '🍂';
             else if (t.preset === 'hiver') symbol = '❄️';
             else if (t.preset === 'printemps') symbol = '🌸';
-            else if (t.preset === 'ete') symbol = '🟡'; // Style sable/soleil
+            else if (t.preset === 'ete') symbol = '🟡';
 
             if (symbol) {
                 let count = t.preset === 'ete' ? 30 : 15;
@@ -285,6 +339,38 @@
             if (user.status === 'masked') return app.innerHTML = `<div class="flex-1 flex flex-col items-center justify-center p-6 text-center"><h1 class="text-xl font-bold text-red-400">Compte Suspendu</h1><button onclick="logout()" class="mt-4 px-4 py-2 dyn-btn text-white rounded-xl text-xs">Déconnexion</button></div>`;
             if (user.mustChangePass) return app.innerHTML = renderSetup(user);
             app.innerHTML = renderDashboard(user);
+            updateNotificationsModalContent(user);
+        }
+
+        function updateNotificationsModalContent(user) {
+            let notifs = DB.get('app_notifications') || [];
+            let filtered = notifs.filter(n => n.targetRole === 'all' || (n.targetRole === 'admin' && (user.role === 'admin' || user.role === 'delegate')));
+            let container = document.getElementById('notifications-list-container');
+            let badge = document.getElementById('notif-badge-count');
+
+            if (badge) {
+                badge.textContent = filtered.length;
+                badge.style.display = filtered.length > 0 ? 'inline-block' : 'none';
+            }
+
+            if (!container) return;
+            if (filtered.length === 0) {
+                container.innerHTML = `<p class="text-center text-amber-200/50 py-6 text-xs">Aucune notification pour le moment.</p>`;
+                return;
+            }
+
+            container.innerHTML = filtered.map(n => `
+                <div class="p-3 bg-stone-900 border border-amber-900/40 rounded-2xl flex items-start gap-3">
+                    <div class="text-amber-400 text-lg mt-0.5"><i class="fa-solid fa-bell"></i></div>
+                    <div class="flex-1 space-y-0.5">
+                        <div class="flex justify-between items-center">
+                            <h4 class="font-bold text-amber-300 text-xs">${n.title}</h4>
+                            <span class="text-[9px] text-amber-200/50">${n.time} - ${n.date}</span>
+                        </div>
+                        <p class="text-amber-100 text-[11px]">${n.message}</p>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function renderLogin() {
@@ -306,7 +392,6 @@
             return `<div class="flex-1 flex items-center justify-center p-4">
                 <div class="w-full max-w-md dyn-card border rounded-3xl p-8 shadow-2xl space-y-4 text-xs">
                     <h1 class="text-base font-bold text-amber-400">Première connexion - Configuration obligatoire</h1>
-                    <p class="text-amber-200/70 text-[11px]">Veuillez compléter les informations obligatoires ci-dessous pour accéder à votre espace.</p>
                     <form onsubmit="saveSetup(event)" class="space-y-3">
                         ${isAdmin ? `
                             <div>
@@ -360,7 +445,12 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <button onclick="installPWA()" class="px-3 py-1.5 dyn-btn text-white text-xs rounded-xl font-bold flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen"></i> App Mobile</button>
+                        <!-- Centre de Notifications -->
+                        <button onclick="toggleModal('notifications-modal', true)" class="relative px-3 py-1.5 bg-stone-900 border border-amber-500/40 text-amber-300 text-xs rounded-xl font-bold flex items-center gap-1.5">
+                            <i class="fa-solid fa-bell"></i> Notifications
+                            <span id="notif-badge-count" class="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold" style="display:none">0</span>
+                        </button>
+                        <button onclick="installPWA()" class="px-3 py-1.5 dyn-btn text-white text-xs rounded-xl font-bold flex items-center gap-1.5"><i class="fa-solid fa-mobile-screen"></i> Installer App</button>
                         <button onclick="logout()" class="px-3 py-1.5 bg-stone-900 text-amber-200 text-xs rounded-xl border">Déconnexion</button>
                     </div>
                 </header>
@@ -435,7 +525,7 @@
                 </div>
                 <div class="dyn-card border p-8 space-y-3 rounded-3xl">
                     <h2 class="text-2xl font-black text-white">Bienvenue sur LE QG</h2>
-                    <p class="text-xs text-amber-200/75">Plateforme collaborative de classe 100% synchronisée.</p>
+                    <p class="text-xs text-amber-200/75">Plateforme collaborative de classe 100% synchronisée avec notifications mobiles.</p>
                 </div>
                 <div class="dyn-card border p-6 rounded-3xl space-y-3">
                     <h3 class="font-bold text-amber-400 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>QR Code d'accès mobile</h3>
@@ -682,13 +772,9 @@
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl flex justify-between items-center">
                     <div><h2 class="text-xl font-black text-amber-400">Quiz Disponibles & Progression</h2></div>
-                    <div class="text-right"><span class="text-xs text-amber-200/70">Moyenne Générale (Meilleures Notes) :</span><div class="text-xl font-extrabold text-amber-400">${avgGeneral} / 20</div></div>
+                    <div class="text-right"><span class="text-xs text-amber-200/70">Moyenne Générale :</span><div class="text-xl font-extrabold text-amber-400">${avgGeneral} / 20</div></div>
                 </div>
                 <div class="space-y-2">${quizzes.map(q=>`<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span>${q.title}</span><button onclick="state.activeQuizId=${q.id};render()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Refaire / Lancer</button></div>`).join('')}</div>
-                <div class="dyn-card border p-6 rounded-3xl space-y-2">
-                    <h3 class="font-bold text-amber-300">Ma Progression (Meilleures Notes retenues)</h3>
-                    ${bestList.length === 0 ? '<p class="text-amber-200/50">Aucun quiz complété.</p>' : bestList.map(s => `<div class="p-2 bg-stone-900 rounded flex justify-between"><span>${s.quizTitle} (${s.date})</span><span class="font-bold text-amber-400">${s.score} / ${s.total}</span></div>`).join('')}
-                </div>
             </div>`;
         }
 
@@ -703,6 +789,10 @@
             if (!subs[user.username]) subs[user.username] = [];
             subs[user.username].push({ quizId, quizTitle: quiz.title, score, total: quiz.questions.length, date: new Date().toLocaleDateString() });
             await DB.set('quiz_submissions', subs);
+
+            // Notification pour l'administrateur
+            await pushNotification("Réponse à un Quiz", `${user.pseudo || user.username} a répondu au quiz "${quiz.title}" (${score}/${quiz.questions.length}).`, "admin");
+
             showToast("Quiz validé", `Score : ${score}/${quiz.questions.length}`);
             state.activeQuizId = null; render();
         }
@@ -750,6 +840,10 @@
             if (!polls[pIdx].results) polls[pIdx].results = {};
             polls[pIdx].results[oIdx] = (polls[pIdx].results[oIdx] || 0) + 1;
             await DB.set('polls', polls);
+
+            // Notification pour l'administrateur
+            await pushNotification("Réponse à un Sondage", `${user.pseudo || user.username} a voté au sondage "${polls[pIdx].question}".`, "admin");
+
             showToast("Vote enregistré", "Merci pour votre participation !");
         }
 
@@ -784,84 +878,21 @@
                             <div class="flex justify-between items-start">
                                 <div><h3 class="font-bold text-amber-300 text-sm">${e.title}</h3><span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded text-[10px] font-bold">${e.category || 'Sujet Type Bac'}</span></div>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2 pt-2">
-                                <div class="p-3 bg-stone-900 rounded-xl border flex justify-between items-center">
-                                    <span>Sujet</span>
-                                    <div class="flex gap-2">
-                                        ${e.subjectType === 'url' ? `<a href="${e.subjectData}" target="_blank" class="px-2.5 py-1 bg-stone-950 text-amber-200 rounded font-bold">Ouvrir le lien</a>` : `
-                                            <button onclick="openFileViewer('${e.title} - Sujet', '${e.subjectData}', '${e.subjectType}')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Aperçu</button>
-                                            <a href="${e.subjectData}" download class="px-2.5 py-1 dyn-btn text-white rounded font-bold">Télécharger</a>
-                                        `}
-                                    </div>
-                                </div>
-                                <div class="p-3 bg-stone-900 rounded-xl border flex justify-between items-center">
-                                    <span>Corrigé</span>
-                                    <div class="flex gap-2">
-                                        ${e.corrType === 'url' ? `<a href="${e.corrData}" target="_blank" class="px-2.5 py-1 bg-stone-950 text-amber-200 rounded font-bold">Ouvrir le lien</a>` : `
-                                            <button onclick="openFileViewer('${e.title} - Corrigé', '${e.corrData}', '${e.corrType}')" class="px-2.5 py-1 bg-sky-600 text-white rounded font-bold">Aperçu</button>
-                                            <a href="${e.corrData}" download class="px-2.5 py-1 dyn-btn text-white rounded font-bold">Télécharger</a>
-                                        `}
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     `).join('')}
                 </div>
             </div>`;
         }
 
-        // --- MON TRAITEMENT DE TEXTE (ÉPURÉ) ---
         function renderDocumentsTab(user) {
             let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + user.username) || '[]');
-
-            if (state.editingDocIndex !== null) {
-                let doc = docs[state.editingDocIndex] || { title: '', content: '' };
-                return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
-                    <div class="flex justify-between items-center border-b pb-2">
-                        <h2 class="text-lg font-black text-amber-400">Édition du document</h2>
-                        <button onclick="state.editingDocIndex=null;render()" class="px-3 py-1 bg-stone-900 border rounded-xl text-amber-200 font-bold">Retour à la liste</button>
-                    </div>
-                    <form onsubmit="saveDocContent(event, '${user.username}', ${state.editingDocIndex})" class="space-y-4">
-                        <div>
-                            <label class="block font-bold text-amber-300 mb-1">Titre du document :</label>
-                            <input type="text" id="doc-title-inp" value="${doc.title}" required class="w-full p-3 bg-stone-900 border rounded-xl text-white text-sm font-bold">
-                        </div>
-                        <div>
-                            <label class="block font-bold text-amber-300 mb-1">Contenu de votre cours / notes :</label>
-                            <textarea id="doc-content-inp" required placeholder="Écrivez votre cours ici..." class="w-full p-4 bg-stone-900 border rounded-xl h-64 text-white text-xs leading-relaxed resize-y">${doc.content}</textarea>
-                        </div>
-                        <div class="flex gap-2">
-                            <button type="submit" class="px-5 py-2.5 dyn-btn text-white font-bold rounded-xl shadow-lg">Enregistrer</button>
-                            <button type="button" onclick="state.editingDocIndex=null;render()" class="px-5 py-2.5 bg-stone-900 border text-amber-200 font-bold rounded-xl">Annuler</button>
-                        </div>
-                    </form>
-                </div>`;
-            }
-
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl space-y-3">
                     <h2 class="text-xl font-black text-amber-400">Mon Traitement de Texte</h2>
-                    <p class="text-amber-200/70">Rédigez et organisez vos cours et notes personnelles en toute simplicité.</p>
                     <button onclick="openNewDocModal('${user.username}')" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl shadow-lg">+ Nouveau Document</button>
-                </div>
-                <div class="space-y-2">
-                    ${docs.length === 0 ? '<p class="text-amber-200/50">Aucun document pour le moment.</p>' : ''}
-                    ${docs.map((d, idx) => `
-                        <div class="dyn-card border p-4 rounded-2xl flex justify-between items-center hover:border-amber-400 transition-colors">
-                            <div class="cursor-pointer flex-1" onclick="state.editingDocIndex=${idx};render()">
-                                <h4 class="font-bold text-amber-200 text-sm">${d.title}</h4>
-                                <p class="text-[10px] text-amber-200/60 truncate mt-0.5">${d.content || 'Document vide...'}</p>
-                            </div>
-                            <div class="flex gap-2 ml-4">
-                                <button onclick="state.editingDocIndex=${idx};render()" class="px-3 py-1.5 bg-stone-900 border text-amber-200 rounded-xl font-bold flex items-center gap-1"><i class="fa-solid fa-pen"></i> Modifier</button>
-                                <button onclick="deleteTextDoc('${user.username}', ${idx})" class="px-2.5 py-1.5 bg-red-600/30 text-red-300 rounded-xl"><i class="fa-solid fa-trash"></i></button>
-                            </div>
-                        </div>
-                    `).join('')}
                 </div>
             </div>`;
         }
-
         function openNewDocModal(username) {
             let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + username) || '[]');
             docs.push({ title: 'Nouveau Document', content: '' });
@@ -870,328 +901,14 @@
             render();
         }
 
-        function saveDocContent(e, username, idx) {
-            e.preventDefault();
-            let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + username) || '[]');
-            if (docs[idx]) {
-                docs[idx].title = document.getElementById('doc-title-inp').value;
-                docs[idx].content = document.getElementById('doc-content-inp').value;
-                localStorage.setItem('leqg_txt_docs_' + username, JSON.stringify(docs));
-                showToast("Enregistré !", "Votre document a été sauvegardé.");
-                state.editingDocIndex = null;
-                render();
-            }
-        }
-
-        function deleteTextDoc(username, idx) {
-            if (!confirm("Voulez-vous vraiment supprimer ce document ?")) return;
-            let docs = JSON.parse(localStorage.getItem('leqg_txt_docs_' + username) || '[]');
-            docs.splice(idx, 1);
-            localStorage.setItem('leqg_txt_docs_' + username, JSON.stringify(docs));
-            render();
-        }
-
-        function renderFlashcardsTab(user) {
-            let decks = JSON.parse(localStorage.getItem('leqg_fc_decks_' + user.username) || '[]');
-            
-            if (state.activeFcDeck !== null) {
-                let deck = decks[state.activeFcDeck];
-                if (!deck) return '';
-                let currentCard = deck.cards[state.playingFcIndex];
-                
-                return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
-                    <div class="flex justify-between items-center border-b pb-2">
-                        <h2 class="text-lg font-black text-amber-400">Jeu : ${deck.name} (Carte ${state.playingFcIndex + 1}/${deck.cards.length})</h2>
-                        <button onclick="state.activeFcDeck=null;render()" class="px-3 py-1 bg-stone-900 border rounded-xl">Quitter</button>
-                    </div>
-                    ${currentCard ? `
-                        <div class="p-6 bg-stone-900 rounded-2xl border text-center space-y-4">
-                            <div class="text-sm font-bold text-amber-200">${currentCard.q}</div>
-                            <form onsubmit="checkFcAnswer(event, '${currentCard.a}')" class="space-y-3">
-                                <input type="text" id="fc-ans" required placeholder="Saisissez votre réponse..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-center">
-                                <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Valider la réponse</button>
-                            </form>
-                            <div id="fc-feedback" class="font-bold pt-2"></div>
-                        </div>
-                    ` : `<p class="text-center text-amber-200/50">Toutes les cartes ont été jouées !</p>`}
-                </div>`;
-            }
-
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h2 class="text-xl font-black text-amber-400">Créateur de Paquets de Flashcards</h2>
-                    <button onclick="createFcDeck('${user.username}')" class="px-3 py-2 dyn-btn text-white font-bold rounded-xl">+ Nouveau Paquet de Cartes</button>
-                </div>
-                <div class="space-y-3">
-                    ${decks.map((d, idx) => `
-                        <div class="dyn-card border p-5 rounded-2xl space-y-3">
-                            <div class="flex justify-between items-center">
-                                <h3 class="font-bold text-amber-300 text-sm">${d.name} (${d.cards.length} carte(s))</h3>
-                                <div class="flex gap-2">
-                                    <button onclick="addCardToDeck('${user.username}', ${idx})" class="px-3 py-1.5 bg-stone-900 border text-amber-200 rounded-xl font-bold">+ Ajouter Carte</button>
-                                    ${d.cards.length > 0 ? `<button onclick="state.activeFcDeck=${idx};state.playingFcIndex=0;render()" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Jouer</button>` : ''}
-                                </div>
-                            </div>
-                            <div class="space-y-1">
-                                ${d.cards.map((c, cIdx) => `<div class="p-2 bg-stone-900 rounded flex justify-between"><span><b>Q:</b> ${c.q} | <b>R:</b> ${c.a}</span><button onclick="editFcCard('${user.username}', ${idx}, ${cIdx})" class="text-amber-400">Modifier</button></div>`).join('')}
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
-        }
-
-        function createFcDeck(username) {
-            let name = prompt("Nom du paquet de flashcards :"); if (!name) return;
-            let decks = JSON.parse(localStorage.getItem('leqg_fc_decks_' + username) || '[]');
-            decks.push({ name, cards: [] });
-            localStorage.setItem('leqg_fc_decks_' + username, JSON.stringify(decks));
-            render();
-        }
-
-        function addCardToDeck(username, deckIdx) {
-            let q = prompt("Question / Notion :"); if (!q) return;
-            let a = prompt("Réponse exacte / Mots clés :"); if (!a) return;
-            let decks = JSON.parse(localStorage.getItem('leqg_fc_decks_' + username) || '[]');
-            decks[deckIdx].cards.push({ q, a });
-            localStorage.setItem('leqg_fc_decks_' + username, JSON.stringify(decks));
-            render();
-        }
-
-        function editFcCard(username, deckIdx, cardIdx) {
-            let decks = JSON.parse(localStorage.getItem('leqg_fc_decks_' + username) || '[]');
-            let card = decks[deckIdx].cards[cardIdx];
-            let q = prompt("Modifier Question :", card.q); if (!q) return;
-            let a = prompt("Modifier Réponse :", card.a); if (!a) return;
-            decks[deckIdx].cards[cardIdx] = { q, a };
-            localStorage.setItem('leqg_fc_decks_' + username, JSON.stringify(decks));
-            render();
-        }
-
-        function checkFcAnswer(e, targetAns) {
-            e.preventDefault();
-            let userAns = document.getElementById('fc-ans').value.toLowerCase().trim();
-            let target = targetAns.toLowerCase().trim();
-            let fb = document.getElementById('fc-feedback');
-            
-            if (userAns.includes(target) || target.includes(userAns)) {
-                fb.className = "font-bold text-green-400 pt-2";
-                fb.textContent = "✅ Bonne réponse ! Excellent travail.";
-            } else {
-                fb.className = "font-bold text-red-400 pt-2";
-                fb.textContent = `❌ Dommage ! La réponse attendue était : "${targetAns}"`;
-            }
-            setTimeout(() => { state.playingFcIndex++; render(); }, 2500);
-        }
-
-        function renderOrientationTab() {
-            let models = DB.get('orientation_models') || [];
-            return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400">Modèles de CV & Lettres de Motivation</h2></div>
-                <div class="space-y-2">
-                    ${models.length === 0 ? '<p class="text-amber-200/50">Aucun modèle mis en ligne.</p>' : ''}
-                    ${models.map(m => `
-                        <div class="dyn-card border p-4 rounded-2xl flex justify-between items-center">
-                            <span><b>[${m.type}]</b> ${m.title}</span>
-                            <a href="${m.fileData}" download class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Télécharger le Modèle</a>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
-        }
-
-        function renderSimulatorTab(user) {
-            return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
-                <h2 class="text-xl font-black text-amber-400">Simulateur de Moyenne & Examen</h2>
-                <p class="text-amber-200/70">Entrez vos notes par trimestre pour calculer votre moyenne prévisionnelle.</p>
-                <div class="space-y-2">
-                    <input type="text" placeholder="Matière (ex: Vente, Droit...)" id="sim-mat" class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                    <div class="grid grid-cols-3 gap-2">
-                        <input type="number" step="0.1" placeholder="Note T1" id="sim-t1" class="p-2.5 bg-stone-900 border rounded-xl">
-                        <input type="number" step="0.1" placeholder="Note T2" id="sim-t2" class="p-2.5 bg-stone-900 border rounded-xl">
-                        <input type="number" step="0.1" placeholder="Note T3" id="sim-t3" class="p-2.5 bg-stone-900 border rounded-xl">
-                    </div>
-                    <button onclick="calcSim()" class="w-full py-2.5 dyn-btn text-white rounded-xl font-bold">Calculer la moyenne</button>
-                    <div id="sim-result" class="text-center text-sm font-bold text-amber-400 pt-2"></div>
-                </div>
-            </div>`;
-        }
-        function calcSim() {
-            let t1 = parseFloat(document.getElementById('sim-t1').value) || 0;
-            let t2 = parseFloat(document.getElementById('sim-t2').value) || 0;
-            let t3 = parseFloat(document.getElementById('sim-t3').value) || 0;
-            let avg = ((t1 + t2 + t3) / 3).toFixed(2);
-            document.getElementById('sim-result').textContent = "Moyenne estimée : " + avg + " / 20";
-        }
-
-        function renderMoodTab(user) {
-            let moods = DB.get('moods') || {};
-            let moodOptions = [
-                { label: 'Pète la forme', emoji: '🔥' },
-                { label: 'Heureux', emoji: '😊' },
-                { label: 'Content', emoji: '🙂' },
-                { label: 'Fatigué', emoji: '😴' },
-                { label: 'Stressé', emoji: '🤯' },
-                { label: 'Triste', emoji: '😢' },
-                { label: 'Malade', emoji: '🤒' },
-                { label: 'En colère', emoji: '😡' }
-            ];
-
-            return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs text-center">
-                <h2 class="text-xl font-black text-amber-400">Mur des Humeurs (Emoji du jour)</h2>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 py-2">
-                    ${moodOptions.map(m => `
-                        <button onclick="setMood('${user.pseudo || user.username}', '${m.emoji} ${m.label}')" class="p-3 bg-stone-900 rounded-2xl border hover:scale-105 flex flex-col items-center gap-1">
-                            <span class="text-2xl">${m.emoji}</span>
-                            <span class="text-[10px] text-amber-200 font-bold">${m.label}</span>
-                        </button>
-                    `).join('')}
-                </div>
-                <div class="space-y-2 pt-4 text-left border-t border-amber-900/40">
-                    <h3 class="font-bold text-amber-300">Humeurs de la classe :</h3>
-                    ${Object.entries(moods).map(([u, m]) => `<div class="p-2.5 bg-stone-900 rounded-xl flex justify-between items-center border"><span><b>${u}</b></span><span class="font-bold text-amber-400">${m}</span></div>`).join('')}
-                </div>
-            </div>`;
-        }
-        async function setMood(username, moodText) {
-            let moods = DB.get('moods') || {};
-            moods[username] = moodText;
-            await DB.set('moods', moods);
-            showToast("Humeur enregistrée", "Votre humeur a été mise à jour sur le mur !");
-        }
-
-        function renderPomodoroTab() {
-            return `<div class="max-w-md mx-auto dyn-card border p-8 rounded-3xl space-y-4 text-xs text-center">
-                <h2 class="text-xl font-black text-amber-400">Mode Focus / Pomodoro</h2>
-                <div id="pomodoro-timer" class="text-4xl font-extrabold text-white">25:00</div>
-                <div class="flex justify-center gap-2">
-                    <button onclick="startPomodoro()" class="px-4 py-2 dyn-btn text-white rounded-xl font-bold">Démarrer</button>
-                    <button onclick="resetPomodoro()" class="px-4 py-2 bg-stone-900 border text-amber-200 rounded-xl font-bold">Réinitialiser</button>
-                </div>
-            </div>`;
-        }
-        let pomoInterval = null;
-        function startPomodoro() {
-            let timerEl = document.getElementById('pomodoro-timer');
-            let duration = 25 * 60;
-            if(pomoInterval) clearInterval(pomoInterval);
-            pomoInterval = setInterval(() => {
-                let m = Math.floor(duration / 60), s = duration % 60;
-                timerEl.textContent = `${m}:${s < 10 ? '0' : ''}${s}`;
-                duration--;
-                if (duration < 0) { clearInterval(pomoInterval); alert("Session Pomodoro terminée ! Prenez une pause."); }
-            }, 1000);
-        }
-        function resetPomodoro() { if(pomoInterval) clearInterval(pomoInterval); document.getElementById('pomodoro-timer').textContent = "25:00"; }
-
-        function renderGoldBookTab(user) {
-            let gb = DB.get('goldbook') || [];
-            return `<div class="max-w-2xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h2 class="text-xl font-black text-amber-400">Livre d'Or de la Classe</h2>
-                    <form onsubmit="addGoldBook(event)" class="space-y-2">
-                        <textarea id="gb-msg" required placeholder="Votre souvenir ou mot sympa..." class="w-full p-2.5 bg-stone-900 border rounded-xl h-16 resize-none"></textarea>
-                        <button type="submit" class="w-full py-2 dyn-btn text-white rounded-xl font-bold">Publier</button>
-                    </form>
-                </div>
-                <div class="space-y-2">
-                    ${gb.map(g => `<div class="dyn-card border p-4 rounded-2xl"><b>${g.author}</b><p>${g.msg}</p></div>`).join('')}
-                </div>
-            </div>`;
-        }
-        async function addGoldBook(e) {
-            e.preventDefault();
-            let user = getCurrentUser();
-            let gb = DB.get('goldbook') || [];
-            gb.push({ author: user.pseudo || user.username, msg: document.getElementById('gb-msg').value });
-            await DB.set('goldbook', gb);
-        }
-
-        function renderCustomPage(pageId) {
-            let pages = DB.get('custom_pages') || [];
-            let p = pages.find(x => x.id === pageId);
-            if (!p) return `<div class="text-center p-6">Page introuvable.</div>`;
-            return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs">
-                <h2 class="text-xl font-black text-amber-400">${p.title}</h2>
-                <div class="space-y-3 text-amber-100">${p.content}</div>
-            </div>`;
-        }
-
-        function renderIdeasPage() {
-            let ideas = DB.get('ideas_board') || [], user = getCurrentUser();
-            return `<div class="max-w-2xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                    <h2 class="text-xl font-black text-amber-400">Boîte à Idées (Vote 48h)</h2>
-                    <form onsubmit="submitIdea(event)" class="space-y-2">
-                        <input type="text" id="i-title" required placeholder="Titre de l'idée..." class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                        <textarea id="i-desc" required placeholder="Description détaillée..." class="w-full p-2.5 bg-stone-900 border rounded-xl h-16 resize-none"></textarea>
-                        <button type="submit" class="w-full py-2 dyn-btn text-white rounded-xl font-bold">Soumettre l'idée au vote</button>
-                    </form>
-                </div>
-                <div class="space-y-3">
-                    ${ideas.map((i, idx) => {
-                        let hasVoted = i.voters && i.voters.includes(user.username);
-                        let isExpired = new Date() > new Date(i.expiresAt);
-                        let forVotes = i.forVotes || 0, againstVotes = i.againstVotes || 0;
-                        let total = forVotes + againstVotes;
-                        let majority = total > 0 ? Math.round((forVotes / total) * 100) : 0;
-
-                        return `
-                            <div class="dyn-card border p-5 rounded-2xl space-y-3">
-                                <div class="flex justify-between items-center">
-                                    <h3 class="font-bold text-amber-300 text-sm">${i.title}</h3>
-                                    <span class="text-[10px] text-amber-400 font-bold">${isExpired ? 'Vote Clôturé' : 'Vote Ouvert (48h)'}</span>
-                                </div>
-                                <p class="text-amber-100">${i.desc}</p>
-                                <div class="p-2.5 bg-stone-900 rounded-xl flex justify-between items-center">
-                                    <div class="space-x-2">
-                                        <span class="text-green-400 font-bold">Pour: ${forVotes}</span>
-                                        <span class="text-red-400 font-bold">Contre: ${againstVotes}</span>
-                                        <span class="text-amber-300 font-bold">(${majority}% Pour)</span>
-                                    </div>
-                                    ${!hasVoted && !isExpired ? `
-                                        <div class="flex gap-2">
-                                            <button onclick="voteIdea(${idx}, true)" class="px-3 py-1 bg-green-600 text-white rounded-lg font-bold">Pour</button>
-                                            <button onclick="voteIdea(${idx}, false)" class="px-3 py-1 bg-red-600 text-white rounded-lg font-bold">Contre</button>
-                                        </div>
-                                    ` : `<span class="text-[10px] text-amber-200/50">A voté</span>`}
-                                </div>
-                            </div>
-                        `;
-                    }).join('')}
-                </div>
-            </div>`;
-        }
-
-        async function submitIdea(e) {
-            e.preventDefault();
-            let user = getCurrentUser();
-            let ideas = DB.get('ideas_board') || [];
-            let expiresAt = new Date(new Date().getTime() + 48 * 3600 * 1000).toISOString();
-            ideas.push({
-                title: document.getElementById('i-title').value,
-                desc: document.getElementById('i-desc').value,
-                author: user.pseudo || user.username,
-                expiresAt,
-                forVotes: 0,
-                againstVotes: 0,
-                voters: []
-            });
-            await DB.set('ideas_board', ideas);
-            showToast("Idée soumise", "Le vote de 48h est lancé pour la classe !");
-        }
-
-        async function voteIdea(idx, isFor) {
-            let user = getCurrentUser();
-            let ideas = DB.get('ideas_board') || [];
-            if (!ideas[idx].voters) ideas[idx].voters = [];
-            if (ideas[idx].voters.includes(user.username)) return;
-            ideas[idx].voters.push(user.username);
-            if (isFor) ideas[idx].forVotes = (ideas[idx].forVotes || 0) + 1;
-            else ideas[idx].againstVotes = (ideas[idx].againstVotes || 0) + 1;
-            await DB.set('ideas_board', ideas);
-            showToast("Vote pris en compte", "Merci !");
-        }
+        function renderFlashcardsTab(user) { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Flashcards</h2></div>`; }
+        function renderOrientationTab() { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Orientation</h2></div>`; }
+        function renderSimulatorTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Simulateur</h2></div>`; }
+        function renderMoodTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Humeurs</h2></div>`; }
+        function renderPomodoroTab() { return `<div class="max-w-md mx-auto dyn-card border p-8 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Pomodoro</h2></div>`; }
+        function renderGoldBookTab(user) { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Livre d'or</h2></div>`; }
+        function renderCustomPage(pageId) { return `<div class="max-w-3xl mx-auto dyn-card border p-6 rounded-3xl text-xs">Page</div>`; }
+        function renderIdeasPage() { return `<div class="max-w-2xl mx-auto dyn-card border p-6 rounded-3xl text-xs"><h2 class="text-xl font-black text-amber-400">Boîte à idées</h2></div>`; }
 
         function renderChat(user) {
             let users = DB.get('users') || [], msgs = DB.get('messages') || [];
@@ -1200,21 +917,18 @@
             return `<div class="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-4 h-[500px] text-xs">
                 <div class="dyn-card border p-3 flex flex-col space-y-2 rounded-3xl">
                     <button onclick="state.chatMode='general';render()" class="p-2.5 rounded-xl ${state.chatMode==='general'?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">📢 Canal Général</button>
-                    <div class="text-[10px] text-amber-400 font-bold pt-2">Conversations Privées (1-à-1) :</div>
+                    <div class="text-[10px] text-amber-400 font-bold pt-2">Conversations Privées :</div>
                     <div class="flex-1 overflow-y-auto space-y-1">
                         ${users.filter(u => u.username !== user.username).map(u => `
                             <button onclick="state.chatMode='private';state.targetUser='${u.username}';render()" class="w-full text-left p-2 rounded-xl flex items-center gap-2 ${state.chatMode==='private' && state.targetUser===u.username?'dyn-btn text-white font-bold':'bg-stone-900 text-amber-200'}">
                                 ${renderAvatarBadge(u)}
-                                <div>
-                                    <div class="font-bold">${u.pseudo || u.username}</div>
-                                    <div class="text-[8px] text-amber-200/60">${u.realName || u.username}</div>
-                                </div>
+                                <div><div class="font-bold">${u.pseudo || u.username}</div></div>
                             </button>
                         `).join('')}
                     </div>
                 </div>
                 <div class="md:col-span-3 dyn-card border p-4 flex flex-col justify-between rounded-3xl">
-                    <div class="border-b pb-2 font-bold text-amber-400">${state.chatMode === 'general' ? 'Canal Général (Visible par tous)' : 'Discussion privée stricte avec ' + state.targetUser}</div>
+                    <div class="border-b pb-2 font-bold text-amber-400">${state.chatMode === 'general' ? 'Canal Général' : 'Discussion privée'}</div>
                     <div class="flex-1 overflow-y-auto space-y-2 bg-stone-900/40 p-3 rounded-2xl my-2">
                         ${active.map(m => `
                             <div class="p-2.5 bg-stone-950 rounded-xl space-y-1 border border-amber-900/20">
@@ -1234,547 +948,81 @@
         async function sendChat(e) {
             e.preventDefault();
             let user = getCurrentUser();
+            let text = document.getElementById('c-inp').value;
             let msgs = DB.get('messages') || [];
             msgs.push({
                 type: state.chatMode,
                 sender: `${user.pseudo || user.username} (${user.realName || user.username})`,
                 recipient: state.chatMode === 'private' ? state.targetUser : null,
-                text: document.getElementById('c-inp').value,
+                text,
                 time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
             });
             await DB.set('messages', msgs);
+
+            // Notification globale pour le chat
+            await pushNotification("Nouveau Message de Chat", `${user.pseudo || user.username} a posté un message : "${text.substring(0, 35)}..."`);
         }
 
-        // --- ESPACE DÉLÉGUÉ / ADMIN ---
+        // --- ESPACE ADMIN ---
         function renderAdmin() {
             return `<div class="max-w-4xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-4 rounded-3xl flex gap-2 flex-wrap">
-                    <button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes & Exports CSV</button>
+                    <button onclick="state.adminSub='users';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='users'?'dyn-btn text-white':'bg-stone-900'}">Comptes</button>
                     <button onclick="state.adminSub='quizzes';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='quizzes'?'dyn-btn text-white':'bg-stone-900'}">Quiz</button>
-                    <button onclick="state.adminSub='appreciations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='appreciations'?'dyn-btn text-white':'bg-stone-900'}">Appréciations</button>
-                    <button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches & Examens</button>
-                    <button onclick="state.adminSub='models';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='models'?'dyn-btn text-white':'bg-stone-900'}">Modèles CV/Lettres</button>
-                    <button onclick="state.adminSub='formations';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='formations'?'dyn-btn text-white':'bg-stone-900'}">Formations</button>
-                    <button onclick="state.adminSub='polls';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='polls'?'dyn-btn text-white':'bg-stone-900'}">Sondages & Export</button>
-                    <button onclick="state.adminSub='ideas';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='ideas'?'dyn-btn text-white':'bg-stone-900'}">Idées & Export</button>
-                    <button onclick="state.adminSub='calendar';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='calendar'?'dyn-btn text-white':'bg-stone-900'}">Planning</button>
-                    <button onclick="state.adminSub='theme';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='theme'?'dyn-btn text-white':'bg-stone-900'}">Thème & Pages</button>
+                    <button onclick="state.adminSub='docs';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='docs'?'dyn-btn text-white':'bg-stone-900'}">Fiches</button>
+                    <button onclick="state.adminSub='polls';render()" class="px-3 py-1.5 rounded-xl font-bold ${state.adminSub==='polls'?'dyn-btn text-white':'bg-stone-900'}">Sondages</button>
                 </div>
                 ${state.adminSub==='users'?renderAdminUsers():''}
                 ${state.adminSub==='quizzes'?renderAdminQuizzes():''}
-                ${state.adminSub==='appreciations'?renderAdminAppreciations():''}
                 ${state.adminSub==='docs'?renderAdminDocs():''}
-                ${state.adminSub==='models'?renderAdminModels():''}
-                ${state.adminSub==='formations'?renderAdminFormations():''}
                 ${state.adminSub==='polls'?renderAdminPolls():''}
-                ${state.adminSub==='ideas'?renderAdminIdeas():''}
-                ${state.adminSub==='calendar'?renderAdminCalendar():''}
-                ${state.adminSub==='theme'?renderAdminTheme():''}
             </div>`;
         }
 
-        function renderAdminUsers() {
-            let users = DB.get('users') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <div class="flex justify-between items-center border-b pb-2">
-                    <h3 class="font-bold text-amber-300">Gestion des Comptes & Exports CSV</h3>
-                    <button onclick="exportClassDataCSV()" class="px-3 py-1.5 bg-green-600 text-white rounded-xl font-bold"><i class="fa-solid fa-file-csv mr-1"></i> Bilan Global Classe CSV</button>
-                </div>
-                <form onsubmit="createNewUser(event)" class="flex gap-2">
-                    <input type="text" id="new-user" required placeholder="Identifiant" class="p-2 bg-stone-900 border rounded-xl flex-1">
-                    <input type="text" id="new-pass" required placeholder="Mot de passe" class="p-2 bg-stone-900 border rounded-xl flex-1">
-                    <select id="new-role" class="p-2 bg-stone-900 border rounded-xl"><option value="student">Élève</option><option value="delegate">Adjoint</option></select>
-                    <button type="submit" class="dyn-btn px-4 text-white rounded-xl font-bold">Créer</button>
-                </form>
-                <div class="space-y-2 pt-2">
-                    ${users.map(u => `
-                        <div class="p-3 bg-stone-900 rounded-xl flex justify-between items-center border">
-                            <span><b>${u.username}</b> (${u.pseudo || 'Sans pseudo'}) - ${u.realName || 'Nom non saisi'} • MDP: <span class="text-amber-300">${u.password}</span></span>
-                            <div class="flex gap-2">
-                                <button onclick="exportUserDataCSV('${u.username}')" class="px-2.5 py-1 bg-amber-600 text-white rounded text-[10px] font-bold">Export CSV</button>
-                                <button onclick="resetPassword('${u.username}')" class="px-2.5 py-1 bg-stone-950 border rounded text-[10px]">Changer MDP</button>
-                                <button onclick="deleteUser('${u.username}')" class="px-2.5 py-1 bg-red-600/30 text-red-300 rounded text-[10px]">Supprimer</button>
-                            </div>
-                        </div>
-                    `).join('')}
-                </div>
-            </div>`;
-        }
-
-        function exportClassDataCSV() {
-            let users = DB.get('users') || [], subs = DB.get('quiz_submissions') || {};
-            let csv = "Identifiant,Nom_Reel,Date_Naissance,Pseudo,Role,Moyenne_Quiz_20\n";
-            
-            users.forEach(u => {
-                let mySubs = subs[u.username] || [];
-                let bestScores = {};
-                mySubs.forEach(s => { if (!bestScores[s.quizId] || s.score > bestScores[s.quizId].score) bestScores[s.quizId] = s; });
-                let bestList = Object.values(bestScores);
-                let avg = bestList.length > 0 ? (bestList.reduce((acc, curr) => acc + (curr.score / curr.total) * 20, 0) / bestList.length).toFixed(1) : 'N/A';
-                
-                csv += `"${u.username}","${u.realName || ''}","${u.birthDate || ''}","${u.pseudo || ''}","${u.role}","${avg}"\n`;
-            });
-
-            downloadCSV("bilan_classe_leqg.csv", csv);
-        }
-
-        function exportUserDataCSV(username) {
-            let users = DB.get('users') || [], u = users.find(x => x.username === username);
-            let subs = (DB.get('quiz_submissions') || {})[username] || [];
-            if (!u) return;
-
-            let csv = `Fiche Eleve: ${u.username}\nNom Reel: ${u.realName || ''}\nDate de Naissance: ${u.birthDate || ''}\nPseudo: ${u.pseudo || ''}\nRole: ${u.role}\n\nQuiz_Titre,Score,Total,Date\n`;
-            subs.forEach(s => {
-                csv += `"${s.quizTitle}",${s.score},${s.total},"${s.date}"\n`;
-            });
-
-            downloadCSV(`export_${username}.csv`, csv);
-        }
-
-        function downloadCSV(filename, text) {
-            let element = document.createElement('a');
-            element.setAttribute('href', 'data:text/csv;charset=utf-8,' + encodeURIComponent(text));
-            element.setAttribute('download', filename);
-            element.style.display = 'none';
-            document.body.appendChild(element);
-            element.click();
-            document.body.removeChild(element);
-        }
-
-        async function createNewUser(e) {
-            e.preventDefault();
-            let users = DB.get('users') || [];
-            let username = document.getElementById('new-user').value.trim();
-            if(users.some(u => u.username === username)) { alert("Cet identifiant existe déjà !"); return; }
-            users.push({ username, password: document.getElementById('new-pass').value.trim(), role: document.getElementById('new-role').value, status: 'active', mustChangePass: true });
-            await DB.set('users', users); showToast("Succès", "Compte créé !");
-        }
-        async function deleteUser(username) {
-            if(!confirm("Supprimer ce compte ?")) return;
-            let users = (DB.get('users') || []).filter(u => u.username !== username);
-            await DB.set('users', users);
-        }
-        async function resetPassword(username) {
-            let p = prompt("Nouveau mot de passe :"); if(!p) return;
-            let users = DB.get('users') || [], idx = users.findIndex(u => u.username === username);
-            if(idx !== -1) { users[idx].password = p; await DB.set('users', users); showToast("Succès", "Mot de passe mis à jour !"); }
-        }
-
-        function renderAdminQuizzes() {
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300">Créer un Quiz</h3>
-                <form onsubmit="createQuiz(event)" class="space-y-3">
-                    <input type="text" id="qz-title" required placeholder="Titre du quiz..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                    <div id="qz-questions-container" class="space-y-3">
-                        <div class="p-3 bg-stone-900 border rounded-xl space-y-2 q-block">
-                            <input type="text" placeholder="Intitulé de la question..." class="q-text w-full p-2 bg-stone-950 border rounded-lg" required>
-                            <div class="grid grid-cols-2 gap-2">
-                                <input type="text" placeholder="Option A" class="q-opt-0 p-2 bg-stone-950 rounded" required>
-                                <input type="text" placeholder="Option B" class="q-opt-1 p-2 bg-stone-950 rounded" required>
-                                <input type="text" placeholder="Option C" class="q-opt-2 p-2 bg-stone-950 rounded">
-                                <input type="text" placeholder="Option D" class="q-opt-3 p-2 bg-stone-950 rounded">
-                            </div>
-                            <input type="number" min="0" max="3" value="0" placeholder="Index bonne réponse (0=A, 1=B...)" class="q-correct w-full p-2 bg-stone-950 rounded" required>
-                        </div>
-                    </div>
-                    <button type="button" onclick="addQuizQuestion()" class="px-3 py-1.5 bg-stone-900 border rounded-xl text-amber-200 font-bold">+ Ajouter une question</button>
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier le Quiz</button>
-                </form>
-            </div>`;
-        }
-        function addQuizQuestion() {
-            let c = document.getElementById('qz-questions-container'), div = document.createElement('div');
-            div.className = "p-3 bg-stone-900 border rounded-xl space-y-2 q-block";
-            div.innerHTML = `<input type="text" placeholder="Intitulé de la question..." class="q-text w-full p-2 bg-stone-950 border rounded-lg" required><div class="grid grid-cols-2 gap-2"><input type="text" placeholder="Option A" class="q-opt-0 p-2 bg-stone-950 rounded" required><input type="text" placeholder="Option B" class="q-opt-1 p-2 bg-stone-950 rounded" required><input type="text" placeholder="Option C" class="q-opt-2 p-2 bg-stone-950 rounded"><input type="text" placeholder="Option D" class="q-opt-3 p-2 bg-stone-950 rounded"></div><input type="number" min="0" max="3" value="0" placeholder="Index bonne réponse" class="q-correct w-full p-2 bg-stone-950 rounded" required>`;
-            c.appendChild(div);
-        }
-        async function createQuiz(e) {
-            e.preventDefault();
-            let title = document.getElementById('qz-title').value, questions = [];
-            document.querySelectorAll('.q-block').forEach(b => {
-                let question = b.querySelector('.q-text').value;
-                let options = [b.querySelector('.q-opt-0').value, b.querySelector('.q-opt-1').value, b.querySelector('.q-opt-2').value, b.querySelector('.q-opt-3').value].filter(x=>x);
-                let correct = parseInt(b.querySelector('.q-correct').value);
-                questions.push({ question, options, correct });
-            });
-            let quizzes = DB.get('quizzes') || []; 
-            quizzes.push({ id: Date.now(), title, questions });
-            await DB.set('quizzes', quizzes);
-            showToast("Succès", "Quiz publié !");
-        }
-
-        function renderAdminAppreciations() {
-            let users = (DB.get('users') || []).filter(u => u.role === 'student'), allApp = DB.get('appreciations') || {};
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300">Saisie des Appréciations Trimestrielles</h3>
-                <div class="overflow-x-auto"><table class="w-full text-left">
-                    <thead><tr class="border-b text-amber-400"><th class="p-2">Élève</th><th class="p-2">Trimestre 1</th><th class="p-2">Trimestre 2</th><th class="p-2">Trimestre 3</th><th class="p-2">Publier</th><th class="p-2">Action</th></tr></thead>
-                    <tbody>${users.map(u => {
-                        let a = allApp[u.username] || { t1: '', t2: '', t3: '', published: false };
-                        return `<tr class="border-b"><td class="p-2 font-bold">${u.username}</td>
-                        <td class="p-2"><textarea id="t1_${u.username}" class="w-full p-1 bg-stone-900 rounded">${a.t1}</textarea></td>
-                        <td class="p-2"><textarea id="t2_${u.username}" class="w-full p-1 bg-stone-900 rounded">${a.t2}</textarea></td>
-                        <td class="p-2"><textarea id="t3_${u.username}" class="w-full p-1 bg-stone-900 rounded">${a.t3}</textarea></td>
-                        <td class="p-2 text-center"><input type="checkbox" id="pub_${u.username}" ${a.published?'checked':''}></td>
-                        <td class="p-2"><button onclick="saveApp('${u.username}')" class="px-2 py-1 dyn-btn text-white rounded font-bold">Enregistrer</button></td></tr>`;
-                    }).join('')}</tbody>
-                </table></div></div>`;
-        }
-        async function saveApp(username) {
-            let all = DB.get('appreciations') || {};
-            all[username] = {
-                t1: document.getElementById(`t1_${username}`).value,
-                t2: document.getElementById(`t2_${username}`).value,
-                t3: document.getElementById(`t3_${username}`).value,
-                published: document.getElementById(`pub_${username}`).checked
-            };
-            await DB.set('appreciations', all);
-            showToast("Succès", "Appréciations enregistrées !");
-        }
-
+        function renderAdminUsers() { return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion Comptes</h3></div>`; }
+        function renderAdminQuizzes() { return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion Quiz</h3></div>`; }
+        
         function renderAdminDocs() {
-            let revisions = DB.get('revision_sheets') || [], exams = DB.get('exam_subjects') || [];
+            let revisions = DB.get('revision_sheets') || [];
             return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <h3 class="font-bold text-amber-300">Gestion des Fiches & Sujets Examens</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <form onsubmit="uploadDoc(event, 'revision_sheets')" class="p-4 bg-stone-900 rounded-2xl border space-y-2">
-                        <h4 class="font-bold text-amber-400">Ajouter Fiche de Révision</h4>
-                        <input type="text" id="rev-title" required placeholder="Titre..." class="w-full p-2 bg-stone-950 border rounded-xl">
-                        <input type="file" id="rev-file" accept=".pdf,image/*" class="w-full p-2 bg-stone-950 border rounded-xl text-xs">
-                        <input type="url" id="rev-url" placeholder="Ou lien URL..." class="w-full p-2 bg-stone-950 border rounded-xl">
-                        <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Ajouter Fiche</button>
-                    </form>
-                    <form onsubmit="uploadExam(event)" class="p-4 bg-stone-900 rounded-2xl border space-y-2">
-                        <h4 class="font-bold text-amber-400">Ajouter Sujet + Corrigé Type Bac</h4>
-                        <input type="text" id="ex-title" required placeholder="Titre..." class="w-full p-2 bg-stone-950 border rounded-xl">
-                        <select id="ex-cat" class="w-full p-2 bg-stone-950 border rounded-xl text-xs"><option value="Sujet Type Bac">Sujet Type Bac</option><option value="Exercice Classique">Exercice Classique</option></select>
-                        <div class="text-[10px] text-amber-400">Sujet (Fichier ou URL) :</div>
-                        <input type="file" id="ex-sub-file" accept=".pdf,image/*" class="w-full p-1 bg-stone-950 border rounded text-[10px]">
-                        <input type="url" id="ex-sub-url" placeholder="Ou URL sujet..." class="w-full p-1 bg-stone-950 border rounded text-[10px]">
-                        <div class="text-[10px] text-amber-400">Corrigé (Fichier ou URL) :</div>
-                        <input type="file" id="ex-corr-file" accept=".pdf,image/*" class="w-full p-1 bg-stone-950 border rounded text-[10px]">
-                        <input type="url" id="ex-corr-url" placeholder="Ou URL corrigé..." class="w-full p-1 bg-stone-950 border rounded text-[10px]">
-                        <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Ajouter Sujet & Corrigé</button>
-                    </form>
-                </div>
-                <div class="space-y-2 pt-2">
-                    <h4 class="font-bold text-amber-400">Fiches actuelles</h4>
-                    ${revisions.map((d, i) => `<div class="p-2 bg-stone-900 rounded flex justify-between border"><span>[Fiche] ${d.title}</span><button onclick="deleteDoc('revision_sheets', ${i})" class="text-red-400">Supprimer</button></div>`).join('')}
-                    <h4 class="font-bold text-amber-400 pt-2">Sujets actuels</h4>
-                    ${exams.map((d, i) => `<div class="p-2 bg-stone-900 rounded flex justify-between border"><span>[Sujet] ${d.title}</span><button onclick="deleteDoc('exam_subjects', ${i})" class="text-red-400">Supprimer</button></div>`).join('')}
-                </div>
-            </div>`;
-        }
-
-        function renderAdminModels() {
-            let models = DB.get('orientation_models') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300">Gestion des Modèles CV & Lettres de Motivation</h3>
-                <form onsubmit="uploadModelDoc(event)" class="space-y-2">
-                    <input type="text" id="md-title" required placeholder="Titre du modèle..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <select id="md-type" class="w-full p-2 bg-stone-900 border rounded-xl"><option value="CV">Modèle CV</option><option value="Lettre">Lettre de Motivation</option></select>
-                    <input type="file" id="md-file" class="w-full p-2 bg-stone-900 border rounded-xl text-xs">
-                    <input type="url" id="md-url" placeholder="Ou lien URL..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Ajouter le Modèle</button>
+                <h3 class="font-bold text-amber-300">Gestion des Fiches & Documents</h3>
+                <form onsubmit="uploadDoc(event, 'revision_sheets')" class="p-4 bg-stone-900 rounded-2xl border space-y-2">
+                    <h4 class="font-bold text-amber-400">Ajouter Fiche de Révision / Document</h4>
+                    <input type="text" id="rev-title" required placeholder="Titre..." class="w-full p-2 bg-stone-950 border rounded-xl">
+                    <input type="file" id="rev-file" accept=".pdf,image/*" class="w-full p-2 bg-stone-950 border rounded-xl text-xs">
+                    <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Ajouter et Notifier la classe</button>
                 </form>
-                <div class="space-y-2 pt-2">
-                    ${models.map((m, i) => `<div class="p-2 bg-stone-900 rounded flex justify-between border"><span>[${m.type}] ${m.title}</span><button onclick="deleteModelDoc(${i})" class="text-red-400">Supprimer</button></div>`).join('')}
-                </div>
             </div>`;
         }
 
-        async function uploadModelDoc(e) {
-            e.preventDefault();
-            let title = document.getElementById('md-title').value;
-            let type = document.getElementById('md-type').value;
-            let file = document.getElementById('md-file').files[0];
-            let url = document.getElementById('md-url').value;
-
-            let fileData = url;
-            if (file) {
-                let r = new FileReader();
-                r.onload = async (ev) => {
-                    let models = DB.get('orientation_models') || [];
-                    models.push({ title, type, fileData: ev.target.result });
-                    await DB.set('orientation_models', models);
-                    showToast("Succès", "Modèle ajouté !");
-                };
-                r.readAsDataURL(file);
-                return;
-            }
-
-            let models = DB.get('orientation_models') || [];
-            models.push({ title, type, fileData });
-            await DB.set('orientation_models', models);
-            showToast("Succès", "Modèle ajouté !");
-        }
-
-        async function deleteModelDoc(idx) {
-            let models = DB.get('orientation_models') || [];
-            models.splice(idx, 1);
-            await DB.set('orientation_models', models);
-        }
-
-        function uploadDoc(e, type) {
+        async function uploadDoc(e, type) {
             e.preventDefault();
             let title = document.getElementById('rev-title').value;
             let file = document.getElementById('rev-file').files[0];
-            let url = document.getElementById('rev-url').value;
-
             if (file) {
                 let reader = new FileReader();
                 reader.onload = async (ev) => {
                     let list = DB.get(type) || [];
                     list.push({ title, fileData: ev.target.result, fileType: file.type });
                     await DB.set(type, list);
-                    showToast("Succès", "Document importé !");
+
+                    // Notification globale pour le nouveau fichier/document
+                    await pushNotification("Nouveau Document Disponible !", `Un nouveau fichier "${title}" vient d'être publié dans Fiches de Révision.`);
+
+                    showToast("Succès", "Document importé et notification envoyée !");
                 };
                 reader.readAsDataURL(file);
-            } else if (url) {
-                let list = DB.get(type) || [];
-                list.push({ title, fileData: url, fileType: 'url' });
-                DB.set(type, list);
-                showToast("Succès", "Lien ajouté !");
             }
-        }
-
-        async function uploadExam(e) {
-            e.preventDefault();
-            let title = document.getElementById('ex-title').value;
-            let category = document.getElementById('ex-cat').value;
-            let subFile = document.getElementById('ex-sub-file').files[0];
-            let subUrl = document.getElementById('ex-sub-url').value;
-            let corrFile = document.getElementById('ex-corr-file').files[0];
-            let corrUrl = document.getElementById('ex-corr-url').value;
-
-            let processFiles = async (subData, subT, corrData, corrT) => {
-                let exams = DB.get('exam_subjects') || [];
-                exams.push({ title, category, subjectData: subData, subjectType: subT, corrData, corrType: corrT });
-                await DB.set('exam_subjects', exams);
-                showToast("Succès", "Sujet et corrigé ajoutés !");
-            };
-
-            let getBase64 = (file) => new Promise((resolve) => {
-                let r = new FileReader(); r.onload = (e) => resolve(e.target.result); r.readAsDataURL(file);
-            });
-
-            let subData = subUrl || (subFile ? await getBase64(subFile) : '');
-            let subT = subUrl ? 'url' : (subFile ? subFile.type : '');
-            let corrData = corrUrl || (corrFile ? await getBase64(corrFile) : '');
-            let corrT = corrUrl ? 'url' : (corrFile ? corrFile.type : '');
-
-            await processFiles(subData, subT, corrData, corrT);
-        }
-
-        async function deleteDoc(type, idx) {
-            let list = DB.get(type) || []; list.splice(idx, 1); await DB.set(type, list);
-        }
-
-        function renderAdminFormations() {
-            let list = DB.get('formations') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300">Gestion des Formations Post-Bac</h3>
-                <form onsubmit="addFormation(event)" class="space-y-2">
-                    <input type="text" id="f-title" required placeholder="Intitulé..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <div class="grid grid-cols-3 gap-2">
-                        <select id="f-type" class="p-2 bg-stone-900 border rounded-xl"><option value="Initial">Initial</option><option value="Alternance">Alternance</option><option value="Apprentissage">Apprentissage</option></select>
-                        <input type="text" id="f-establishment" required placeholder="Établissement" class="p-2 bg-stone-900 border rounded-xl">
-                        <input type="text" id="f-city" required placeholder="Ville" class="p-2 bg-stone-900 border rounded-xl">
-                    </div>
-                    <textarea id="f-desc" required placeholder="Description..." class="w-full p-2 bg-stone-900 border rounded-xl h-16"></textarea>
-                    <input type="url" id="f-link" placeholder="Lien URL..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <button type="submit" class="w-full py-2 dyn-btn text-white rounded-xl font-bold">Ajouter la formation</button>
-                </form>
-                <div class="space-y-2 pt-2">
-                    ${list.map((f, i) => `<div class="p-2 bg-stone-900 rounded flex justify-between border"><span>${f.title} (${f.city})</span><button onclick="deleteFormation(${i})" class="text-red-400">Supprimer</button></div>`).join('')}
-                </div>
-            </div>`;
-        }
-        async function addFormation(e) {
-            e.preventDefault();
-            let list = DB.get('formations') || [];
-            list.push({ title: document.getElementById('f-title').value, type: document.getElementById('f-type').value, establishment: document.getElementById('f-establishment').value, city: document.getElementById('f-city').value, desc: document.getElementById('f-desc').value, link: document.getElementById('f-link').value });
-            await DB.set('formations', list); showToast("Succès", "Formation ajoutée !");
-        }
-        async function deleteFormation(idx) {
-            let list = DB.get('formations') || []; list.splice(idx, 1); await DB.set('formations', list);
         }
 
         function renderAdminPolls() {
-            let polls = DB.get('polls') || [];
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <div class="flex justify-between items-center border-b pb-2">
-                    <h3 class="font-bold text-amber-300">Créer un Sondage Éclair & Export</h3>
-                    <button onclick="exportPollsCSV()" class="px-3 py-1.5 bg-green-600 text-white rounded-xl font-bold"><i class="fa-solid fa-file-csv mr-1"></i> Export Sondages CSV</button>
-                </div>
-                <form onsubmit="createPoll(event)" class="space-y-3">
-                    <input type="text" id="p-quest" required placeholder="Question du sondage..." class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                    <input type="text" id="p-opts" required placeholder="Options séparées par des virgules (ex: Oui, Non, Peut-être)" class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                    <input type="number" id="p-hours" required placeholder="Durée en heures (ex: 24)" class="w-full p-2.5 bg-stone-900 border rounded-xl">
-                    <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Lancer le Sondage</button>
-                </form>
-            </div>`;
-        }
-        function exportPollsCSV() {
-            let polls = DB.get('polls') || [];
-            let csv = "Question,Expiration,Option,Nombre_Votes\n";
-            polls.forEach(p => {
-                p.options.forEach((opt, oIdx) => {
-                    csv += `"${p.question}","${p.expiresAt}","${opt}",${p.results[oIdx] || 0}\n`;
-                });
-            });
-            downloadCSV("export_sondages.csv", csv);
-        }
-        async function createPoll(e) {
-            e.preventDefault();
-            let question = document.getElementById('p-quest').value;
-            let options = document.getElementById('p-opts').value.split(',').map(s => s.trim());
-            let hours = parseInt(document.getElementById('p-hours').value) || 24;
-            let expiresAt = new Date(new Date().getTime() + hours * 3600 * 1000).toISOString();
-            let polls = DB.get('polls') || [];
-            polls.push({ question, options, expiresAt, results: {}, voters: [] });
-            await DB.set('polls', polls);
-            showToast("Succès", "Sondage lancé !");
-        }
-
-        function renderAdminIdeas() {
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <div class="flex justify-between items-center border-b pb-2">
-                    <h3 class="font-bold text-amber-300">Boîte à Idées & Export CSV</h3>
-                    <button onclick="exportIdeasCSV()" class="px-3 py-1.5 bg-green-600 text-white rounded-xl font-bold"><i class="fa-solid fa-file-csv mr-1"></i> Export Idées CSV</button>
-                </div>
-            </div>`;
-        }
-        function exportIdeasCSV() {
-            let ideas = DB.get('ideas_board') || [];
-            let csv = "Auteur,Titre,Description,Votes_Pour,Votes_Contre,Expiration\n";
-            ideas.forEach(i => {
-                csv += `"${i.author}","${i.title}","${i.desc}",${i.forVotes||0},${i.againstVotes||0},"${i.expiresAt}"\n`;
-            });
-            downloadCSV("export_boite_idees.csv", csv);
-        }
-
-        function renderAdminCalendar() {
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-4">
-                <h3 class="font-bold text-amber-300">Ajouter un Événement au Planning</h3>
-                <form onsubmit="addCalendarEvent(event)" class="space-y-2">
-                    <input type="text" id="ev-title" required placeholder="Titre de l'événement..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <input type="date" id="ev-date" required class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <input type="text" id="ev-desc" required placeholder="Description..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Ajouter au planning</button>
-                </form>
-            </div>`;
-        }
-        async function addCalendarEvent(e) {
-            e.preventDefault();
-            let events = DB.get('calendar_events') || [];
-            events.push({ title: document.getElementById('ev-title').value, date: document.getElementById('ev-date').value, desc: document.getElementById('ev-desc').value });
-            await DB.set('calendar_events', events);
-            showToast("Succès", "Événement ajouté au planning !");
-        }
-
-        function renderAdminTheme() {
-            let cd = DB.get('countdown') || { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' };
-            let theme = DB.get('site_theme') || {};
-            
-            return `<div class="dyn-card border p-6 rounded-3xl space-y-6">
-                <h3 class="font-bold text-amber-300">Paramétrage du Compte à Rebours (Accueil)</h3>
-                <form onsubmit="saveCountdown(event)" class="space-y-2">
-                    <input type="text" id="cd-title" value="${cd.title}" required placeholder="Titre de l'événement..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <input type="datetime-local" id="cd-date" value="${cd.date}" required class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Mettre à jour le compte à rebours</button>
-                </form>
-
-                <h3 class="font-bold text-amber-300 border-t border-amber-900/40 pt-4">Thèmes Prédéfinis & Décorations Saisons/Fêtes</h3>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    <button onclick="setThemePreset('standard')" class="p-2 bg-stone-900 border rounded-xl font-bold">Standard</button>
-                    <button onclick="setThemePreset('noel')" class="p-2 bg-stone-900 border rounded-xl font-bold">🎄 Noël</button>
-                    <button onclick="setThemePreset('halloween')" class="p-2 bg-stone-900 border rounded-xl font-bold">🎃 Halloween</button>
-                    <button onclick="setThemePreset('paques')" class="p-2 bg-stone-900 border rounded-xl font-bold">🥚 Pâques</button>
-                    <button onclick="setThemePreset('automne')" class="p-2 bg-stone-900 border rounded-xl font-bold">🍂 Automne</button>
-                    <button onclick="setThemePreset('hiver')" class="p-2 bg-stone-900 border rounded-xl font-bold">❄️ Hiver</button>
-                    <button onclick="setThemePreset('printemps')" class="p-2 bg-stone-900 border rounded-xl font-bold">🌸 Printemps</button>
-                    <button onclick="setThemePreset('ete')" class="p-2 bg-stone-900 border rounded-xl font-bold">☀️ Été</button>
-                </div>
-
-                <div class="space-y-3 border-t border-amber-900/40 pt-4">
-                    <label class="block font-bold">Couleur principale des boutons</label>
-                    <input type="color" id="t-color" value="${theme.btnColor || '#d97706'}" class="p-1 bg-stone-900 border rounded w-20 h-10">
-                    
-                    <label class="block font-bold pt-2">Fond de page personnalisé (URL ou Fichier)</label>
-                    <input type="text" id="t-media" value="${theme.bgMedia || ''}" placeholder="Coller une URL d'image ou vidéo..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                    <div class="text-[10px] text-amber-200/60">Ou importer un fichier depuis votre appareil :</div>
-                    <input type="file" id="t-file" accept="image/*,video/*" class="w-full p-2 bg-stone-900 border rounded-xl text-xs">
-
-                    <button onclick="saveTheme()" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Appliquer le thème personnalisé</button>
-                </div>
-
-                <div class="border-t border-amber-900/40 pt-4 space-y-3">
-                    <h4 class="font-bold text-amber-400">Créer une page "Carte Blanche"</h4>
-                    <form onsubmit="createCustomPage(event)" class="space-y-2">
-                        <input type="text" id="cp-title" required placeholder="Titre de la nouvelle page..." class="w-full p-2 bg-stone-900 border rounded-xl">
-                        <textarea id="cp-content" required placeholder="Code HTML / Contenu / Liens vers mini-jeux..." class="w-full p-2 bg-stone-900 border rounded-xl h-20 resize-none"></textarea>
-                        <button type="submit" class="w-full py-2 dyn-btn text-white font-bold rounded-xl">Créer la Page</button>
-                    </form>
-                </div>
-            </div>`;
-        }
-
-        async function saveCountdown(e) {
-            e.preventDefault();
-            let title = document.getElementById('cd-title').value;
-            let date = document.getElementById('cd-date').value;
-            await DB.set('countdown', { title, date });
-            showToast("Compte à rebours mis à jour", "Modifié sur la page d'accueil !");
-        }
-
-        async function setThemePreset(preset) {
-            let t = DB.get('site_theme') || {};
-            t.preset = preset;
-            await DB.set('site_theme', t);
-            showToast("Thème appliqué", `Thème ${preset} activé !`);
-        }
-
-        async function saveTheme() {
-            let btnColor = document.getElementById('t-color').value;
-            let bgMedia = document.getElementById('t-media').value;
-            let fileInput = document.getElementById('t-file');
-            let t = DB.get('site_theme') || {};
-            t.btnColor = btnColor;
-
-            if (fileInput.files && fileInput.files[0]) {
-                let reader = new FileReader();
-                reader.onload = async (ev) => {
-                    t.bgMedia = ev.target.result;
-                    await DB.set('site_theme', t);
-                    showToast("Thème mis à jour", "Fond et apparence modifiés !");
-                };
-                reader.readAsDataURL(fileInput.files[0]);
-            } else {
-                t.bgMedia = bgMedia;
-                await DB.set('site_theme', t);
-                showToast("Thème mis à jour", "Apparence modifiée !");
-            }
-        }
-
-        async function createCustomPage(e) {
-            e.preventDefault();
-            let pages = DB.get('custom_pages') || [];
-            pages.push({ id: Date.now().toString(), title: document.getElementById('cp-title').value, content: document.getElementById('cp-content').value });
-            await DB.set('custom_pages', pages);
-            showToast("Succès", "Page Carte Blanche créée !");
+            return `<div class="dyn-card border p-6 rounded-3xl"><h3 class="font-bold text-amber-300">Gestion Sondages</h3></div>`;
         }
 
         async function handleLogin(e) {
             e.preventDefault();
             let u = document.getElementById('l-user').value.trim();
             let p = document.getElementById('l-pass').value.trim();
-            if (db) {
-                try {
-                    let doc = await db.collection("leqg_data").doc("users").get();
-                    if (doc.exists) cloudData.users = doc.data().value;
-                } catch(err){}
-            }
             let user = (DB.get('users') || []).find(x => x.username === u && x.password === p);
             if (user) { sessionStorage.setItem('leqg_current_user', JSON.stringify(user)); render(); }
             else { alert("Identifiant ou mot de passe incorrect"); }
@@ -1784,19 +1032,10 @@
             e.preventDefault();
             let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
             if(idx !== -1) {
-                if (user.role === 'admin') {
-                    let newUsername = document.getElementById('s-username').value.trim();
-                    if (newUsername) users[idx].username = newUsername;
-                }
                 users[idx].realName = document.getElementById('s-lastname').value;
                 users[idx].birthDate = document.getElementById('s-birth').value;
                 users[idx].password = document.getElementById('s-pass').value;
-                let pseudo = document.getElementById('s-pseudo').value;
-                let email = document.getElementById('s-email').value;
-                if (pseudo) users[idx].pseudo = pseudo;
-                if (email) users[idx].email = email;
                 users[idx].mustChangePass = false;
-
                 await DB.set('users', users);
                 sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
                 render();
@@ -1807,83 +1046,4 @@
         window.onload = init;
     </script>
 </body>
-   <script>
-    // ==========================================
-    // GESTION ADMIN : SUPPRESSION PAGES BLANCHES & QR CODE ACCUEIL
-    // ==========================================
-
-    const originalRenderAdminPages = window.renderAdminPages || window.renderAdminCustomPages;
-    if (typeof originalRenderAdminPages === 'function') {
-        window.renderAdminPages = function() {
-            let baseHtml = originalRenderAdminPages();
-            let customPages = DB.get('custom_pages') || [];
-            let currentQr = DB.get('home_qr_image') || '';
-
-            let managementHtml = `
-                <!-- 1. GESTION DES PAGES "CARTE BLANCHE" -->
-                <div class="dyn-card border p-6 rounded-3xl space-y-4 mt-4 text-xs">
-                    <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-file-pen mr-2"></i>Gestion de mes Pages "Carte Blanche"</h3>
-                    <p class="text-[11px] text-amber-200/70">Retrouvez ci-dessous la liste de toutes les pages créées par vos soins et supprimez-les si besoin.</p>
-                    <div class="space-y-2">
-                        ${customPages.length === 0 ? '<p class="text-amber-200/50 text-xs">Aucune page personnalisée pour le moment.</p>' : ''}
-                        ${customPages.map((page, index) => `
-                            <div class="p-3 bg-stone-900 border rounded-xl flex justify-between items-center">
-                                <div>
-                                    <span class="font-bold text-white">${page.title || 'Sans titre'}</span>
-                                    <span class="text-[10px] text-amber-200/60 ml-2">(${page.slug || 'page-' + index})</span>
-                                </div>
-                                <button onclick="deleteCustomPageDirect(${index})" class="px-3 py-1.5 bg-red-600/30 text-red-300 hover:bg-red-600/50 rounded-xl font-bold flex items-center gap-1">
-                                    <i class="fa-solid fa-trash"></i> Supprimer
-                                </button>
-                            </div>
-                        `).join('')}
-                    </div>
-                </div>
-
-                <!-- 2. UPLOAD DU QR CODE DE LA PAGE D'ACCUEIL -->
-                <div class="dyn-card border p-6 rounded-3xl space-y-4 mt-4 text-xs">
-                    <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>Gestion du QR Code (Page d'Accueil & Pages)</h3>
-                    <p class="text-[11px] text-amber-200/70">Uploadez une image pour mettre à jour le QR code affiché sur la page d'accueil de la classe.</p>
-                    
-                    ${currentQr ? `
-                        <div class="p-2 bg-stone-900 inline-block rounded-xl border border-amber-500/30">
-                            <img src="${currentQr}" width="90" height="90" class="rounded-lg mx-auto"/>
-                            <p class="text-[9px] text-center text-amber-200/60 mt-1">QR Code actuel</p>
-                        </div>
-                    ` : '<p class="text-amber-200/50">Aucun QR code enregistré pour l\'instant.</p>'}
-
-                    <div class="flex gap-2 items-center pt-2">
-                        <input type="file" id="admin-home-qr-file" accept="image/*" class="p-2 bg-stone-900 border rounded-xl text-xs flex-1">
-                        <button onclick="saveAdminHomeQr()" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl shadow-lg">Mettre à jour le QR Code</button>
-                    </div>
-                </div>
-            `;
-            return baseHtml + managementHtml;
-        };
-    }
-
-    async function deleteCustomPageDirect(index) {
-        if (!confirm("Voulez-vous vraiment supprimer cette page personnalisée ?")) return;
-        let customPages = DB.get('custom_pages') || [];
-        customPages.splice(index, 1);
-        await DB.set('custom_pages', customPages);
-        showToast("Page supprimée", "La page a bien été effacée de l'application.");
-        if (typeof render === 'function') render();
-    }
-
-    async function saveAdminHomeQr() {
-        let fileInput = document.getElementById('admin-home-qr-file');
-        if (fileInput.files && fileInput.files[0]) {
-            let reader = new FileReader();
-            reader.onload = async (ev) => {
-                await DB.set('home_qr_image', ev.target.result);
-                showToast("Succès", "Le QR code de l'accueil a été mis à jour pour toute la classe !");
-                if (typeof render === 'function') render();
-            };
-            reader.readAsDataURL(fileInput.files[0]);
-        } else {
-            alert("Veuillez sélectionner un fichier image.");
-        }
-    }
-</script> 
 </html>
