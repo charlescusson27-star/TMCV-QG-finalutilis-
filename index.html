@@ -36,6 +36,12 @@
             user-select: none;
             animation: fall linear infinite;
         }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printable-area, #printable-area * { visibility: visible; }
+            #printable-area { position: absolute; left: 0; top: 0; width: 100%; color: black !important; background: white !important; }
+        }
     </style>
 </head>
 <body id="body-theme" class="bg-stone-950 text-amber-50 h-full flex flex-col font-sans bg-cover bg-center bg-fixed relative overflow-hidden transition-all duration-500">
@@ -51,6 +57,13 @@
         </div>
     </div>
 
+    <!-- Banner d'Alerte Flash Urgente -->
+    <div id="flash-alert-banner" class="hidden fixed top-0 inset-x-0 z-50 bg-red-600 text-white font-black text-xs px-4 py-2 text-center shadow-2xl flex items-center justify-center gap-2 animate-bounce">
+        <i class="fa-solid fa-triangle-exclamation text-base"></i>
+        <span id="flash-alert-text">ALERTE DÉLÉGUÉS : Message urgent</span>
+        <button onclick="document.getElementById('flash-alert-banner').classList.add('hidden')" class="ml-4 text-white hover:text-stone-200"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+
     <!-- Modal Visionneuse -->
     <div id="file-viewer-modal" class="hidden fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
         <div class="w-full max-w-5xl h-[85vh] dyn-card border rounded-3xl p-6 shadow-2xl flex flex-col space-y-4">
@@ -63,6 +76,82 @@
                 </div>
             </div>
             <div id="viewer-content-container" class="flex-1 bg-stone-900 rounded-2xl overflow-hidden border flex items-center justify-center"></div>
+        </div>
+    </div>
+
+    <!-- Modal Téléchargement APK & Instructions -->
+    <div id="apk-download-modal" class="hidden fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
+        <div class="w-full max-w-xl dyn-card border rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
+            <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                <h3 class="font-black text-base text-amber-400 flex items-center gap-2"><i class="fa-brands fa-android text-lg text-green-500"></i> Instructions d'installation APK</h3>
+                <button onclick="toggleModal('apk-download-modal', false)" class="text-amber-200/70 hover:text-white p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-4 bg-stone-900/80 rounded-2xl border border-amber-900/40 space-y-2">
+                <p class="font-bold text-amber-300">📱 Guide de téléchargement & d'installation :</p>
+                <div id="apk-instructions-content" class="text-amber-100 whitespace-pre-line leading-relaxed"></div>
+            </div>
+            <div class="pt-2 flex justify-end">
+                <button onclick="toggleModal('apk-download-modal', false)" class="px-5 py-2 dyn-btn text-white font-bold rounded-xl">Fermer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Fiche de Sanction & Signalement Administrateur -->
+    <div id="sanction-modal" class="hidden fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
+        <div class="w-full max-w-2xl dyn-card border rounded-3xl p-6 shadow-2xl space-y-4 text-xs max-h-[90vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                <h3 class="font-black text-base text-red-400 flex items-center gap-2"><i class="fa-solid fa-gavel"></i> Fiche de Sanction & Signalement Officiel</h3>
+                <button onclick="toggleModal('sanction-modal', false)" class="text-amber-200/70 hover:text-white p-1"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form onsubmit="submitSanctionForm(event)" class="space-y-4">
+                <input type="hidden" id="sanction-target-user">
+                
+                <div class="p-3 bg-stone-900 rounded-xl border border-amber-900/40 font-bold text-amber-300">
+                    Compte ciblé : <span id="sanction-target-display" class="text-white"></span>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Motifs du signalement / Infraction * :</label>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        <label class="flex items-center gap-2 p-2 bg-stone-900 rounded-lg border cursor-pointer hover:border-amber-400"><input type="checkbox" value="Propos inappropriés / Insultes" class="sanction-reason accent-amber-500"> Propos inappropriés / Insultes</label>
+                        <label class="flex items-center gap-2 p-2 bg-stone-900 rounded-lg border cursor-pointer hover:border-amber-400"><input type="checkbox" value="Spam / Messages répétés" class="sanction-reason accent-amber-500"> Spam / Harcèlement de chat</label>
+                        <label class="flex items-center gap-2 p-2 bg-stone-900 rounded-lg border cursor-pointer hover:border-amber-400"><input type="checkbox" value="Non-respect du règlement intérieur" class="sanction-reason accent-amber-500"> Non-respect du règlement</label>
+                        <label class="flex items-center gap-2 p-2 bg-stone-900 rounded-lg border cursor-pointer hover:border-amber-400"><input type="checkbox" value="Tricherie / Contournement" class="sanction-reason accent-amber-500"> Tricherie aux quiz</label>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Détails complémentaires & faits observés * :</label>
+                    <textarea id="sanction-details" required placeholder="Expliquez précisément la situation..." class="w-full p-3 bg-stone-900 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Mesure(s) / Sanction(s) appliquée(s) * :</label>
+                    <select id="sanction-type" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-300 font-bold">
+                        <option value="avertissement">⚠️ Avertissement officiel (Alerte sur le compte)</option>
+                        <option value="blocage_tchat">🔇 Mute Tchat / Messagerie (Accès cours conservé)</option>
+                        <option value="blocage_forum">🚫 Interdiction de publication (Sondages, Idées, Quiz)</option>
+                        <option value="retrait_points">📉 Retrait de points au classement (Personnalisable ci-dessous)</option>
+                        <option value="suspension_temp">⏳ Suspension temporaire de compte (24h - 72h)</option>
+                        <option value="ban_definitif">❌ Exclusion définitive du QG</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Nombre de points à retirer au classement :</label>
+                    <input type="number" id="sanction-points-val" value="20" placeholder="Ex: 50, 100..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                </div>
+
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Période d'application / Durée :</label>
+                    <input type="text" id="sanction-duration" placeholder="Ex: 48h, 1 semaine, Définitif..." value="Immédiat" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                </div>
+
+                <div class="flex gap-2 pt-2">
+                    <button type="submit" class="flex-1 py-3 bg-red-800 hover:bg-red-700 text-white font-black rounded-xl">Enregistrer la sanction & Générer la fiche</button>
+                    <button type="button" onclick="toggleModal('sanction-modal', false)" class="px-4 py-3 bg-stone-800 text-amber-200 font-bold rounded-xl">Annuler</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -91,7 +180,7 @@
 
         let cloudData = {
             users: [
-                { username: 'Charlesadmin', password: 'tln20', role: 'admin', status: 'active', mustChangePass: true, email: 'charlescusson27@gmail.com', avatarSkin: '#fca5a5', avatarAccessory: '👑', avatarHair: '🧢', pseudo: 'Charles (Admin)', realName: 'Charles Cusson', birthDate: '2009-03-26' }
+                { username: 'Charlesadmin', password: 'tln20', role: 'admin', status: 'active', mustChangePass: true, email: 'charlescusson27@gmail.com', avatarSkin: '#fca5a5', avatarAccessory: '👑', avatarHair: '🧢', pseudo: 'Charles (Admin)', realName: 'Charles Cusson', birthDate: '2009-03-26', sanctions: [] }
             ],
             messages: [],
             ideas_board: [],
@@ -108,7 +197,12 @@
             app_notifications: [],
             user_scores: {},
             home_qr_image: '',
+            app_logo_url: '',
             hidden_tabs: [],
+            crosswords: [],
+            sanction_reports: [],
+            admin_logs: [],
+            app_apk_config: { fileUrl: '', instructions: '1. Cliquez sur le lien pour télécharger le fichier APK.\n2. Autorisez l\'installation depuis des sources inconnues dans vos paramètres Android si nécessaire.\n3. Ouvrez le fichier téléchargé et suivez les instructions à l\'écran.' },
             site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(12, 12, 12, 0.95)', borderColor: 'rgba(245, 158, 11, 0.4)', bgUrl: '' },
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' }
         };
@@ -133,7 +227,15 @@
             activeDeckId: null,
             activeNoteId: null,
             activeQuizId: null,
-            mailSubTab: 'inbox'
+            activeCrosswordId: null,
+            mailSubTab: 'inbox',
+            cvName: '',
+            cvEmail: '',
+            cvPhone: '',
+            cvProfile: '',
+            cvExp: '',
+            cvEdu: '',
+            cvSkills: ''
         };
 
         async function init() {
@@ -157,6 +259,18 @@
             render();
         }
 
+        async function logAdminAction(action, target) {
+            let user = getCurrentUser();
+            let logs = DB.get('admin_logs') || [];
+            logs.unshift({
+                admin: user ? user.username : 'Système',
+                action,
+                target,
+                date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+            });
+            await DB.set('admin_logs', logs);
+        }
+
         function checkBirthdays() {
             let users = DB.get('users') || [];
             let today = new Date().toISOString().slice(5, 10);
@@ -166,7 +280,7 @@
             let adminUser = users.find(u => u.username === 'Charlesadmin');
             users.forEach(u => {
                 if (u.birthDate && u.birthDate.slice(5, 10) === today) {
-                    pushGlobalNotification("🎂 Anniversaire !", `C'est l'anniversaire de ${u.pseudo || u.username} aujourd'hui !`, adminUser ? adminUser.username : null);
+                    pushGlobalNotification("🎂 Anniversaire !", `C'est l'anniversaire de ${u.pseudo || u.username} aujourd'hui !`, 'all');
                 }
             });
             sessionStorage.setItem(checkedKey, 'true');
@@ -213,15 +327,36 @@
 
         function getCurrentUser() { let u = sessionStorage.getItem('leqg_current_user'); return u ? JSON.parse(u) : null; }
         
-        async function pushGlobalNotification(title, message, targetUsername = null) {
+        async function pushGlobalNotification(title, message, targetUsername = 'all') {
             let notifs = DB.get('app_notifications') || [];
-            notifs.unshift({
+            let newNotif = {
+                id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4),
                 title, message,
                 target: targetUsername || 'all',
                 date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-            });
+            };
+            notifs.unshift(newNotif);
             await DB.set('app_notifications', notifs);
             showToast(title, message);
+        }
+
+        async function triggerFlashAlert(event) {
+            event.preventDefault();
+            let msg = document.getElementById('flash-msg-input').value.trim();
+            if (!msg) return;
+            
+            document.getElementById('flash-alert-text').textContent = "📢 ALERTE DÉLÉGUÉS : " + msg;
+            document.getElementById('flash-alert-banner').classList.remove('hidden');
+            await pushGlobalNotification("🚨 ALERTE URGENTE", msg, 'all');
+            await logAdminAction("Alerte Flash diffusée", msg);
+            showToast("Alerte Flash envoyée !", "Visible immédiatement par toute la classe.");
+        }
+
+        async function deleteNotification(notifId) {
+            let notifs = DB.get('app_notifications') || [];
+            notifs = notifs.filter(n => n.id !== notifId);
+            await DB.set('app_notifications', notifs);
+            showToast("Notification supprimée", "");
         }
 
         function showToast(title, msg) {
@@ -232,6 +367,17 @@
         }
 
         function toggleModal(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
+
+        function triggerApkDownload() {
+            let apkConfig = DB.get('app_apk_config') || { fileUrl: '', instructions: '' };
+            if (!apkConfig.fileUrl) {
+                alert("L'application APK n'est pas encore disponible au téléchargement.");
+                return;
+            }
+            window.open(apkConfig.fileUrl, '_blank');
+            document.getElementById('apk-instructions-content').textContent = apkConfig.instructions || "Aucune instruction spécifique fournie par l'administration.";
+            toggleModal('apk-download-modal', true);
+        }
 
         function openFileViewer(title, url, type) {
             document.getElementById('viewer-title').textContent = title;
@@ -265,9 +411,14 @@
         }
 
         function renderLogin() {
+            let logoUrl = DB.get('app_logo_url') || '';
             return `<div class="flex-1 flex items-center justify-center p-4">
                 <div class="w-full max-w-md dyn-card border rounded-3xl p-8 shadow-2xl space-y-6 text-center">
-                    <div class="p-3 bg-amber-500/10 text-amber-400 rounded-2xl text-3xl inline-block"><i class="fa-solid fa-chess-rook"></i></div>
+                    ${logoUrl ? `
+                        <img src="${logoUrl}" class="w-20 h-20 object-contain mx-auto rounded-2xl border-2 border-amber-400 p-1 bg-black/40 shadow-lg">
+                    ` : `
+                        <div class="p-3 bg-amber-500/10 text-amber-400 rounded-2xl text-3xl inline-block"><i class="fa-solid fa-chess-rook"></i></div>
+                    `}
                     <h1 class="text-2xl font-black text-white">LE QG - Connexion</h1>
                     <form onsubmit="handleLogin(event)" class="space-y-3 text-left">
                         <input type="text" id="l-user" required placeholder="Identifiant..." class="w-full px-4 py-3 bg-stone-900 border rounded-2xl text-xs text-amber-100 focus:outline-none">
@@ -299,11 +450,13 @@
             let hidden = DB.get('hidden_tabs') || [];
             let notifs = DB.get('app_notifications') || [];
             let unreadCount = notifs.filter(n => n.target === 'all' || n.target === user.username).length;
+            let logoUrl = DB.get('app_logo_url') || '';
 
             return `
                 <header class="bg-stone-950/90 border-b border-amber-900/40 px-4 py-3 flex justify-between items-center">
                     <div class="flex items-center gap-3">
                         <button onclick="state.sidebar=!state.sidebar;render()" class="p-2 bg-stone-900 text-amber-100 rounded-xl"><i class="fa-solid fa-bars"></i></button>
+                        ${logoUrl ? `<img src="${logoUrl}" class="w-8 h-8 object-contain rounded-lg border border-amber-400 bg-black/40">` : ''}
                         <div class="flex items-center gap-2">
                             ${renderAvatarBadge(user)}
                             <div>
@@ -313,6 +466,9 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
+                        <button onclick="triggerApkDownload()" class="px-3 py-1.5 bg-green-950/80 hover:bg-green-900 text-green-300 text-xs font-bold rounded-xl border border-green-600/50 flex items-center gap-1.5 transition">
+                            <i class="fa-brands fa-android text-sm"></i> Télécharger l'app
+                        </button>
                         <button onclick="state.tab='notifs';render()" class="relative p-2 bg-stone-900 border border-amber-900/40 text-amber-400 rounded-xl hover:border-amber-500 transition">
                             <i class="fa-solid fa-bell text-sm"></i>
                             ${unreadCount > 0 ? `<span class="absolute -top-1 -right-1 bg-amber-500 text-stone-950 text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center">${unreadCount}</span>` : ''}
@@ -321,14 +477,18 @@
                     </div>
                 </header>
                 <div class="flex-1 flex overflow-hidden relative">
-                    <aside class="fixed inset-y-0 left-0 z-30 w-64 bg-stone-950/95 border-r transform ${state.sidebar ? 'translate-x-0' : '-translate-x-full'} transition-transform flex flex-col p-4 pt-16 space-y-1 text-xs overflow-y-auto">
+                    <aside class="fixed inset-y-0 left-0 z-30 w-64 bg-stone-950/95 border-r transform ${state.sidebar ? 'translate-x-0' : '-translate-x-full'} transition-transform flex flex-col p-4 space-y-1 text-xs overflow-y-auto">
+                        <div class="flex justify-between items-center pb-2 border-b border-amber-900/40 mb-2">
+                            <span class="font-black text-amber-400 text-sm">NAVIGATION</span>
+                            <button onclick="state.sidebar=false;render()" class="text-amber-200/70 hover:text-white p-1 text-base"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
                         ${!hidden.includes('home') ? sbBtn('home', 'Accueil & QR Code', 'house') : ''}
                         ${!hidden.includes('quizzes') ? sbBtn('quizzes', 'Quiz & Évaluations', 'circle-question') : ''}
                         ${!hidden.includes('appreciations') ? sbBtn('appreciations', 'Mes Appréciations', 'file-contract') : ''}
                         ${!hidden.includes('notifs') ? sbBtn('notifs', 'Centre Notifications', 'bell') : ''}
                         ${!hidden.includes('polls') ? sbBtn('polls', 'Sondages en Direct', 'square-poll-vertical') : ''}
                         ${!hidden.includes('games') ? sbBtn('games', 'Mots Croisés MCV', 'puzzle-piece') : ''}
-                        ${!hidden.includes('revisions') ? sbBtn('revisions', 'Fiches de Révision', 'book-open') : ''}
+                        ${!hidden.includes('revisions') ? sbBtn('revisions', 'Fiches, CV & Lettres', 'book-open') : ''}
                         ${!hidden.includes('exams') ? sbBtn('exams', 'Sujets & Corrigés Bac', 'file-pdf') : ''}
                         ${!hidden.includes('formations') ? sbBtn('formations', 'Orientation & Post-Bac', 'graduation-cap') : ''}
                         ${!hidden.includes('ideas') ? sbBtn('ideas', 'Boîte à Idées (Vote 48h)', 'lightbulb') : ''}
@@ -357,7 +517,7 @@
             if (state.tab === 'notifs') return renderNotifsSection(user);
             if (state.tab === 'polls') return renderPollsTab(user);
             if (state.tab === 'games') return renderCrosswordsSection();
-            if (state.tab === 'revisions') return renderDocPage('Fiches de Révision', DB.get('revision_sheets') || []);
+            if (state.tab === 'revisions') return renderDocPageWithGenerator('Fiches & Documents', DB.get('revision_sheets') || []);
             if (state.tab === 'exams') return renderDocPage('Sujets & Corrigés Bac', DB.get('exam_subjects') || []);
             if (state.tab === 'formations') return renderFormationsTab(user);
             if (state.tab === 'ideas') return renderIdeasPage(user);
@@ -429,7 +589,7 @@
 
             let globalPct = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
             let scores = DB.get('user_scores') || {};
-            let myPoints = scores[user.username] || 0;
+            let myPoints = scores[user.username] !== undefined ? scores[user.username] : 0;
 
             return `<div class="max-w-4xl mx-auto space-y-6 text-xs">
                 <!-- VUE PROGRESSION GÉNÉRALE ET MATIÈRES -->
@@ -441,7 +601,7 @@
                         </div>
                         <div class="text-right">
                             <span class="text-xs text-amber-300 font-bold">Score Classe :</span>
-                            <div class="text-2xl font-black text-white">${myPoints} pts</div>
+                            <div class="text-2xl font-black ${myPoints < 0 ? 'text-red-400' : 'text-white'}">${myPoints} pts</div>
                         </div>
                     </div>
 
@@ -520,7 +680,7 @@
                         }).join('')}
                     </div>
                 </div>
-            </div>`;
+            `;
         }
 
         function renderQuizPlayer(user, quiz) {
@@ -596,7 +756,7 @@
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl space-y-2">
                     <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-bell mr-2"></i>Centre de Notifications</h2>
-                    <p class="text-amber-200/70">Retrouvez toutes les alertes et annonces importantes de la plateforme.</p>
+                    <p class="text-amber-200/70">Retrouvez toutes les alertes, messages et annonces reçus. Les notifications restent enregistrées tant que vous ne les supprimez pas.</p>
                 </div>
                 <div class="space-y-3">
                     ${myNotifs.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune notification pour le moment.</p>' : ''}
@@ -610,6 +770,9 @@
                                 </div>
                                 <p class="text-amber-100 mt-1">${n.message}</p>
                             </div>
+                            <button onclick="deleteNotification('${n.id}')" title="Supprimer la notification" class="text-red-400/70 hover:text-red-300 p-2 rounded-xl bg-stone-900 border border-red-900/30 transition">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
                         </div>
                     `).join('')}
                 </div>
@@ -674,8 +837,15 @@
             showToast("Vote enregistré !", "Merci d'avoir participé au sondage.");
         }
 
-        // --- MOTS CROISÉS ---
+        // --- MOTS CROISÉS DYNAMIQUES ADMIN & UTILISATEUR ---
         function renderCrosswordsSection() {
+            let crosswords = DB.get('crosswords') || [];
+
+            if (state.activeCrosswordId !== null) {
+                let cw = crosswords.find(c => c.id === state.activeCrosswordId);
+                if (cw) return renderCrosswordGame(cw);
+            }
+
             return `
                 <div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl max-w-4xl mx-auto text-xs">
                     <div class="flex items-center justify-between border-b border-amber-900/40 pb-4">
@@ -683,66 +853,76 @@
                             <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl"><i class="fa-solid fa-puzzle-piece"></i></div>
                             <div>
                                 <h3 class="font-black text-lg text-amber-400">Mots Croisés MCV (Révisions)</h3>
-                                <p class="text-xs text-amber-200/60">Testez vos connaissances en Droit, Économie et Commerce.</p>
+                                <p class="text-xs text-amber-200/60">Testez vos connaissances sur les mots croisés créés par l'administration.</p>
                             </div>
                         </div>
                     </div>
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div onclick="startCrossword('facile')" class="p-5 rounded-2xl bg-stone-900 border border-amber-900/40 hover:border-amber-400 cursor-pointer transition text-center space-y-2">
-                            <h4 class="font-black text-amber-300 text-sm">Niveau Facile</h4>
-                            <p class="text-[10px] text-amber-200/70">Notions de base de vente et d'agencement.</p>
-                            <button class="px-4 py-1.5 dyn-btn text-white font-bold rounded-xl text-xs">Jouer</button>
+                    
+                    ${crosswords.length === 0 ? `
+                        <div class="p-8 text-center text-amber-200/50 space-y-2">
+                            <p class="text-sm font-bold">Aucune grille de mots croisés n'a encore été publiée par l'admin.</p>
+                            <p class="text-[11px]">Revenez plus tard pour tester vos révisions !</p>
                         </div>
-                        <div onclick="startCrossword('moyen')" class="p-5 rounded-2xl bg-stone-900 border border-amber-900/40 hover:border-amber-400 cursor-pointer transition text-center space-y-2">
-                            <h4 class="font-black text-amber-300 text-sm">Niveau Moyen</h4>
-                            <p class="text-[10px] text-amber-200/70">Calculs commerciaux et gestion.</p>
-                            <button class="px-4 py-1.5 dyn-btn text-white font-bold rounded-xl text-xs">Jouer</button>
+                    ` : `
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            ${crosswords.map(cw => `
+                                <div class="p-5 rounded-2xl bg-stone-900 border border-amber-900/40 hover:border-amber-400 transition flex flex-col justify-between space-y-3">
+                                    <div>
+                                        <div class="flex justify-between items-start">
+                                            <h4 class="font-black text-amber-300 text-sm">${cw.title}</h4>
+                                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${cw.level==='facile'?'bg-green-500/20 text-green-300':cw.level==='moyen'?'bg-amber-500/20 text-amber-300':'bg-red-500/20 text-red-300'}">${cw.level.toUpperCase()}</span>
+                                        </div>
+                                        <p class="text-[11px] text-amber-200/60 mt-1">${cw.clues.length} définition(s) à résoudre</p>
+                                    </div>
+                                    <button onclick="state.activeCrosswordId='${cw.id}';render()" class="w-full py-2 dyn-btn text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2">
+                                        <i class="fa-solid fa-play"></i> Lancer la grille
+                                    </button>
+                                </div>
+                            `).join('')}
                         </div>
-                        <div onclick="startCrossword('difficile')" class="p-5 rounded-2xl bg-stone-900 border border-amber-900/40 hover:border-amber-400 cursor-pointer transition text-center space-y-2">
-                            <h4 class="font-black text-amber-300 text-sm">Niveau Difficile</h4>
-                            <p class="text-[10px] text-amber-200/70">Droit du travail et contrats complexes.</p>
-                            <button class="px-4 py-1.5 dyn-btn text-white font-bold rounded-xl text-xs">Jouer</button>
-                        </div>
-                    </div>
-                    <div id="crossword-container" class="hidden bg-stone-950 p-6 rounded-2xl border border-amber-500/40 space-y-4"></div>
+                    `}
                 </div>
             `;
         }
 
-        function startCrossword(level) {
-            let container = document.getElementById('crossword-container');
-            container.classList.remove('hidden');
-            let data = {
-                facile: { title: 'Niveau Facile', clues: [{ q: 'Action de présenter les produits en rayon (9 lettres)', a: 'MERCHANDISING' }, { q: 'Somme payée par le client en caisse (5 lettres)', a: 'PRIX' }] },
-                moyen: { title: 'Niveau Moyen', clues: [{ q: 'Différence entre le prix de vente et le coût d\'achat (5 lettres)', a: 'MARGE' }, { q: 'Taux appliqué sur la valeur ajoutée (3 lettres)', a: 'TVA' }] },
-                difficile: { title: 'Niveau Difficile', clues: [{ q: 'Contrat de travail à durée indéterminée (3 lettres)', a: 'CDI' }, { q: 'Procédure de rupture conventionnelle ou licenciement (8 lettres)', a: 'RUPTURE' }] }
-            }[level];
-
-            container.innerHTML = `
-                <div class="flex justify-between items-center border-b border-amber-900/30 pb-3">
-                    <h4 class="font-black text-sm text-amber-400">Mots Croisés - ${data.title}</h4>
-                    <button onclick="document.getElementById('crossword-container').classList.add('hidden')" class="px-2 py-1 bg-red-900/40 text-red-300 rounded text-xs">Fermer</button>
-                </div>
-                <div class="space-y-3">
-                    ${data.clues.map((c, idx) => `
-                        <div class="p-3 bg-stone-900 rounded-xl border space-y-2">
-                            <p class="font-bold text-amber-100"><b>Définition ${idx+1} :</b> ${c.q}</p>
-                            <div class="flex gap-2">
-                                <input type="text" id="cw-${level}-${idx}" placeholder="Votre réponse..." class="p-2 bg-stone-950 border rounded-xl text-amber-300 font-bold uppercase flex-1">
-                                <button onclick="checkCrosswordAnswer('${level}', ${idx}, '${c.a}')" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Vérifier</button>
-                            </div>
+        function renderCrosswordGame(cw) {
+            return `
+                <div class="dyn-card border p-6 rounded-3xl space-y-6 shadow-2xl max-w-3xl mx-auto text-xs">
+                    <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                        <div>
+                            <span class="px-2 py-0.5 rounded text-[10px] font-bold ${cw.level==='facile'?'bg-green-500/20 text-green-300':cw.level==='moyen'?'bg-amber-500/20 text-amber-300':'bg-red-500/20 text-red-300'}">${cw.level.toUpperCase()}</span>
+                            <h3 class="font-black text-lg text-amber-400 mt-1">${cw.title}</h3>
                         </div>
-                    `).join('')}
+                        <button onclick="state.activeCrosswordId=null;render()" class="px-3 py-1.5 bg-stone-900 text-amber-200 border rounded-xl font-bold">Fermer la grille</button>
+                    </div>
+
+                    <div class="space-y-4">
+                        ${cw.clues.map((c, idx) => `
+                            <div class="p-4 bg-stone-900/90 rounded-2xl border border-amber-900/40 space-y-2">
+                                <div class="flex justify-between text-amber-200">
+                                    <span class="font-bold">Définition ${idx + 1} : ${c.q}</span>
+                                    <span class="text-[10px] text-amber-400 font-mono">(${c.a.length} lettres)</span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input type="text" id="cw-user-ans-${idx}" placeholder="Saisir la réponse..." class="p-2.5 bg-stone-950 border rounded-xl text-amber-300 font-black uppercase flex-1 tracking-wider">
+                                    <button onclick="checkCrosswordAnswer('${cw.id}', ${idx}, '${c.a.replace(/'/g, "\\'")}')" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">Vérifier</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
                 </div>
             `;
         }
 
-        function checkCrosswordAnswer(level, idx, expected) {
-            let val = document.getElementById(`cw-${level}-${idx}`).value.trim().toUpperCase();
-            if (val === expected) {
-                alert("Bravo, c'est la bonne réponse ! 🌟");
+        function checkCrosswordAnswer(cwId, idx, expected) {
+            let inp = document.getElementById(`cw-user-ans-${idx}`);
+            let val = inp.value.trim().toUpperCase();
+            if (val === expected.toUpperCase()) {
+                inp.classList.add('border-green-500', 'bg-green-950/40');
+                showToast("Bravo !", "Bonne réponse pour cette définition ! 🌟");
             } else {
-                alert("Ce n'est pas tout à fait correct, réessayez.");
+                inp.classList.add('border-red-500');
+                showToast("Incorrect", "Ce n'est pas la bonne réponse, réessayez.");
             }
         }
 
@@ -780,7 +960,7 @@
                         </div>
                     </div>
                 </div>
-            </div>`;
+            `;
         }
 
         function selectNote(noteId) {
@@ -976,17 +1156,20 @@
         function renderLeaderboardSection(u) {
             let scores = DB.get('user_scores') || {};
             let users = DB.get('users') || [];
-            let sorted = users.map(user => ({ pseudo: user.pseudo || user.username, score: scores[user.username] || 0 })).sort((a, b) => b.score - a.score);
+            let sorted = users.map(user => ({ pseudo: user.pseudo || user.username, score: scores[user.username] !== undefined ? scores[user.username] : 0 })).sort((a, b) => b.score - a.score);
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl text-center"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-trophy mr-2"></i>Classement Classe</h2></div>
-                <div class="space-y-2">${sorted.map((s, idx) => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="font-bold text-amber-400">#${idx+1} ${s.pseudo}</span><span class="font-bold text-white">${s.score} pts</span></div>`).join('')}</div>
+                <div class="space-y-2">${sorted.map((s, idx) => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="font-bold text-amber-400">#${idx+1} ${s.pseudo}</span><span class="font-bold ${s.score < 0 ? 'text-red-400' : 'text-white'}">${s.score} pts</span></div>`).join('')}</div>
             </div>`;
         }
 
         // --- MESSAGERIE ---
         function renderChat(user) {
             let msgs = DB.get('messages') || [], users = DB.get('users') || [];
+            let isMuted = user.sanctions && user.sanctions.includes('blocage_tchat');
+
             let filtered = state.chatMode === 'general' ? msgs.filter(m => !m.recipient || m.recipient === 'all') : msgs.filter(m => (m.sender === user.username && m.recipient === state.targetUser) || (m.sender === state.targetUser && m.recipient === user.username));
+            
             return `<div class="max-w-4xl mx-auto dyn-card border p-6 rounded-3xl space-y-4 text-xs h-[540px] flex flex-col justify-between">
                 <div class="flex justify-between items-center border-b pb-3">
                     <h2 class="text-base font-black text-amber-400">Messagerie</h2>
@@ -996,7 +1179,13 @@
                     </div>
                 </div>
                 <div class="flex-1 overflow-y-auto space-y-3 p-3 bg-stone-900/60 rounded-2xl border">${filtered.map(m => `<div class="p-3 rounded-2xl max-w-[80%] ${m.sender===user.username?'ml-auto bg-amber-600 text-white':'mr-auto bg-stone-950 text-amber-100 border'}"><b class="text-amber-300">${m.sender}</b><p>${m.text}</p></div>`).join('')}</div>
-                <form onsubmit="sendChatMessage(event)" class="flex gap-2"><input type="text" id="chat-inp" required placeholder="Message..." class="flex-1 p-3 bg-stone-900 border rounded-xl text-amber-100"><button type="submit" class="dyn-btn px-6 text-white font-bold rounded-xl">Envoyer</button></form>
+                ${isMuted ? `
+                    <div class="p-3 bg-red-950/80 border border-red-500/40 text-red-200 text-center rounded-xl font-bold">
+                        🚫 Votre accès à la messagerie instantanée a été restreint suite à une sanction disciplinaire.
+                    </div>
+                ` : `
+                    <form onsubmit="sendChatMessage(event)" class="flex gap-2"><input type="text" id="chat-inp" required placeholder="Message..." class="flex-1 p-3 bg-stone-900 border rounded-xl text-amber-100"><button type="submit" class="dyn-btn px-6 text-white font-bold rounded-xl">Envoyer</button></form>
+                `}
             </div>`;
         }
 
@@ -1004,9 +1193,24 @@
             e.preventDefault();
             let user = getCurrentUser(), inp = document.getElementById('chat-inp'), text = inp.value.trim();
             if (!text) return;
+
+            if (user.sanctions && user.sanctions.includes('blocage_tchat')) {
+                return alert("Vous ne pouvez pas envoyer de messages suite à une restriction.");
+            }
+
             let msgs = DB.get('messages') || [];
-            msgs.push({ sender: user.username, recipient: state.chatMode === 'private' ? state.targetUser : 'all', type: state.chatMode === 'private' ? 'private' : 'general', text, time: new Date().toLocaleTimeString() });
+            let recipient = state.chatMode === 'private' ? state.targetUser : 'all';
+            
+            msgs.push({ sender: user.username, recipient, type: state.chatMode === 'private' ? 'private' : 'general', text, time: new Date().toLocaleTimeString() });
             await DB.set('messages', msgs);
+
+            // Notification du message
+            if (state.chatMode === 'private' && recipient) {
+                await pushGlobalNotification("💬 Nouveau Message Privé", `${user.pseudo || user.username} vous a envoyé un message : "${text.slice(0, 30)}..."`, recipient);
+            } else if (state.chatMode === 'general') {
+                await pushGlobalNotification("💬 Nouveau Message Général", `${user.pseudo || user.username} : "${text.slice(0, 30)}..."`, 'all');
+            }
+
             inp.value = '';
             render();
         }
@@ -1080,7 +1284,11 @@
             });
 
             await DB.set('mails', mails);
-            showToast("E-mail envoyé !", "Votre message a bien été transmis.");
+            
+            // Notification E-mail destinataire
+            await pushGlobalNotification("📧 Nouveau Mail Reçu", `De : ${user.pseudo || user.username} - Objet : ${subject}`, recipient);
+
+            showToast("E-mail envoyé !", "Votre message a bien été transmitted.");
         }
 
         // --- PROFIL & AVATAR ---
@@ -1212,10 +1420,106 @@
                         `;
                     })}
                 </div>
-            </div>`;
+            `;
         }
 
-        // --- PANNEAU ADMINISTRATEUR NAVIGABLE ---
+        // --- DOCUMENTS AVEC GÉNÉRATEUR CV ET LETTRE DE MOTIVATION ---
+        function renderDocPageWithGenerator(title, items) {
+            return `
+                <div class="max-w-4xl mx-auto space-y-6 text-xs">
+                    <div class="dyn-card border p-6 rounded-3xl space-y-2">
+                        <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-book-open mr-2"></i>${title}</h2>
+                        <p class="text-amber-200/70">Téléchargez les modèles de l'admin ou générez directement votre propre CV et Lettre de motivation !</p>
+                    </div>
+
+                    <!-- FICHES ET CV UPLOADÉS PAR L'ADMIN -->
+                    <div class="space-y-3">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-folder-open mr-2"></i>Fiches & Modèles partagés par l'Administration</h3>
+                        ${items.length === 0 ? '<p class="text-amber-200/50 italic py-2">Aucun document spécifique téléversé.</p>' : ''}
+                        ${items.map(i => `
+                            <div class="dyn-card border p-4 rounded-2xl flex justify-between items-center">
+                                <span class="font-bold text-amber-100">${i.title}</span>
+                                <button onclick="openFileViewer('${i.title}', '${i.fileData}', '${i.fileType}')" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Consulter / Télécharger</button>
+                            </div>
+                        `).join('')}
+                    </div>
+
+                    <!-- GÉNÉRATEUR INTERACTIF CV ET LETTRE DE MOTIVATION -->
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                            <h3 class="font-black text-base text-amber-400"><i class="fa-solid fa-wand-magic-sparkles mr-2"></i>Générateur de CV & Lettre de Motivation Pro</h3>
+                            <button onclick="printGeneratedDoc()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl flex items-center gap-2"><i class="fa-solid fa-print"></i> Exporter / Imprimer PDF</button>
+                        </div>
+
+                        <form oninput="updateCvPreview()" class="space-y-3">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+                                <input type="text" id="cv-name" placeholder="Nom & Prénom..." value="${state.cvName}" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                <input type="email" id="cv-email" placeholder="Email..." value="${state.cvEmail}" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <input type="text" id="cv-phone" placeholder="Téléphone..." value="${state.cvPhone}" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            </div>
+                            <textarea id="cv-profile" placeholder="Profil / Objectif professionnel..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-16 resize-none">${state.cvProfile}</textarea>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                <textarea id="cv-exp" placeholder="Expériences professionnelles (PFMP, stages...)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-24 resize-none">${state.cvExp}</textarea>
+                                <textarea id="cv-edu" placeholder="Formations & Diplômes (Bac Pro MCV...)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-24 resize-none">${state.cvEdu}</textarea>
+                            </div>
+                            <textarea id="cv-skills" placeholder="Compétences clés (Vente, Caisse, Merchandising...)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-16 resize-none">${state.cvSkills}</textarea>
+                        </form>
+
+                        <!-- APERÇU IMPRIMABLE -->
+                        <div class="pt-4 border-t border-amber-900/40">
+                            <h4 class="font-bold text-amber-300 mb-2">Aperçu du Document Généré :</h4>
+                            <div id="printable-area" class="p-8 bg-white text-stone-900 rounded-2xl space-y-4 shadow-xl border border-stone-300">
+                                <div class="border-b-2 border-amber-600 pb-3">
+                                    <h1 id="pv-name" class="text-2xl font-black text-stone-900 uppercase">CHARLES CUSSON</h1>
+                                    <p id="pv-contact" class="text-xs text-stone-600 mt-1">charlescusson27@gmail.com | 06 00 00 00 00</p>
+                                </div>
+                                <div>
+                                    <h2 class="font-black text-xs text-amber-700 uppercase tracking-wider border-b pb-1">Profil Professionnel</h2>
+                                    <p id="pv-profile" class="text-xs text-stone-700 mt-1 whitespace-pre-line">Élève motivé en Terminale Bac Pro MCV...</p>
+                                </div>
+                                <div class="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <h2 class="font-black text-xs text-amber-700 uppercase tracking-wider border-b pb-1">Expériences</h2>
+                                        <p id="pv-exp" class="text-xs text-stone-700 mt-1 whitespace-pre-line">Stages PFMP en grande distribution...</p>
+                                    </div>
+                                    <div>
+                                        <h2 class="font-black text-xs text-amber-700 uppercase tracking-wider border-b pb-1">Formations</h2>
+                                        <p id="pv-edu" class="text-xs text-stone-700 mt-1 whitespace-pre-line">Bac Pro MCV - Lycée PMC</p>
+                                    </div>
+                                </div>
+                                <div>
+                                    <h2 class="font-black text-xs text-amber-700 uppercase tracking-wider border-b pb-1">Compétences</h2>
+                                    <p id="pv-skills" class="text-xs text-stone-700 mt-1 whitespace-pre-line">Accueil client, encaissement, mise en rayon.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateCvPreview() {
+            state.cvName = document.getElementById('cv-name').value;
+            state.cvEmail = document.getElementById('cv-email').value;
+            state.cvPhone = document.getElementById('cv-phone').value;
+            state.cvProfile = document.getElementById('cv-profile').value;
+            state.cvExp = document.getElementById('cv-exp').value;
+            state.cvEdu = document.getElementById('cv-edu').value;
+            state.cvSkills = document.getElementById('cv-skills').value;
+
+            document.getElementById('pv-name').textContent = state.cvName || 'NOM PRÉNOM';
+            document.getElementById('pv-contact').textContent = `${state.cvEmail || 'email@exemple.com'} | ${state.cvPhone || '06 00 00 00 00'}`;
+            document.getElementById('pv-profile').textContent = state.cvProfile || 'Rédigez votre profil...';
+            document.getElementById('pv-exp').textContent = state.cvExp || 'Rédigez vos expériences...';
+            document.getElementById('pv-edu').textContent = state.cvEdu || 'Vos diplômes...';
+            document.getElementById('pv-skills').textContent = state.cvSkills || 'Vos compétences...';
+        }
+
+        function printGeneratedDoc() {
+            window.print();
+        }
+
+        // --- PANNEAU ADMINISTRATEUR NAVIGABLE BOOSTÉ ---
         function renderAdmin() {
             let users = DB.get('users') || [];
             let msgs = DB.get('messages') || [];
@@ -1223,18 +1527,56 @@
 
             return `
                 <div class="max-w-5xl mx-auto space-y-6 text-xs">
-                    <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                        <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-user-gear mr-2"></i>Panneau d'Administration LE QG</h2>
+                    <!-- BANNIÈRE DASHBOARD ADMIN D'ÉTAT -->
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4 shadow-2xl">
+                        <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                            <div>
+                                <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-user-gear mr-2"></i>Super-Panneau Administrateur LE QG</h2>
+                                <p class="text-amber-200/70">Contrôle total du système, des sanctions et de l'animation de la classe.</p>
+                            </div>
+                            <span class="px-3 py-1 bg-amber-500/20 text-amber-300 font-bold border rounded-xl">Mode Super-Admin</span>
+                        </div>
+
+                        <!-- STATISTIQUES EN TEMPS RÉEL -->
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-center">
+                            <div class="p-3 bg-stone-900 rounded-2xl border">
+                                <div class="text-amber-400 font-bold">Comptes Utilisateurs</div>
+                                <div class="text-xl font-black text-white">${users.length}</div>
+                            </div>
+                            <div class="text-p-3 bg-stone-900 rounded-2xl border">
+                                <div class="text-amber-400 font-bold">Quiz Publiés</div>
+                                <div class="text-xl font-black text-white">${(DB.get('quizzes')||[]).length}</div>
+                            </div>
+                            <div class="p-3 bg-stone-900 rounded-2xl border">
+                                <div class="text-amber-400 font-bold">Sondages Actifs</div>
+                                <div class="text-xl font-black text-white">${(DB.get('polls')||[]).length}</div>
+                            </div>
+                            <div class="p-3 bg-stone-900 rounded-2xl border">
+                                <div class="text-amber-400 font-bold">Signalements / Sanctions</div>
+                                <div class="text-xl font-black text-red-400">${(DB.get('sanction_reports')||[]).length}</div>
+                            </div>
+                        </div>
+
+                        <!-- ANNONCE FLASH EN DIRECT -->
+                        <form onsubmit="triggerFlashAlert(event)" class="flex gap-2 p-3 bg-stone-900 rounded-2xl border border-red-900/50">
+                            <input type="text" id="flash-msg-input" placeholder="Message d'Alerte Flash à diffuser à TOUTE la classe..." required class="flex-1 p-2 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                            <button type="submit" class="px-4 py-2 bg-red-800 hover:bg-red-700 text-white font-bold rounded-xl flex items-center gap-1.5"><i class="fa-solid fa-bullhorn"></i> Diffuser Alerte</button>
+                        </form>
+
                         <!-- BARRE DE NAVIGATION ADMIN -->
                         <div class="flex flex-wrap gap-2 border-t border-amber-900/40 pt-3">
                             ${adminNavBtn('users', 'Comptes Users', 'users-gear')}
+                            ${adminNavBtn('sanctions', 'Fiches Sanctions', 'gavel')}
+                            ${adminNavBtn('logo', 'Logo du Site', 'image')}
+                            ${adminNavBtn('apk', 'Fichier APK & Guide', 'android')}
+                            ${adminNavBtn('crosswords', 'Mots Croisés', 'puzzle-piece')}
                             ${adminNavBtn('quizzes', 'Création Quiz', 'circle-question')}
                             ${adminNavBtn('appreciations', 'Appréciations', 'file-signature')}
                             ${adminNavBtn('pubs', 'Publications', 'file-pdf')}
                             ${adminNavBtn('formations', 'Formations', 'graduation-cap')}
                             ${adminNavBtn('polls', 'Sondages', 'square-poll-vertical')}
                             ${adminNavBtn('themes', 'Thèmes & Saisons', 'palette')}
-                            ${adminNavBtn('surveillance', 'Surveillance MP', 'user-secret')}
+                            ${adminNavBtn('logs', 'Logs Admin', 'clock-rotate-left')}
                             ${adminNavBtn('export', 'Export Excel', 'file-excel')}
                             ${adminNavBtn('qrcode', 'QR Code', 'qrcode')}
                         </div>
@@ -1251,10 +1593,153 @@
         }
 
         function renderAdminSubSection(users, msgs, apps) {
+            if (state.adminSub === 'logo') {
+                let logoUrl = DB.get('app_logo_url') || '';
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-image mr-2"></i>Logo du Site & de la Page de Connexion</h3>
+                        <form onsubmit="adminSaveLogo(event)" class="space-y-3">
+                            <div>
+                                <label class="block font-bold text-amber-200 mb-1">Fichier Logo (image depuis votre appareil) :</label>
+                                <input type="file" id="logo-file-inp" accept="image/*" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
+                            </div>
+                            <div>
+                                <label class="block font-bold text-amber-200 mb-1">Ou Lien URL direct du Logo :</label>
+                                <input type="url" id="logo-url-inp" value="${logoUrl}" placeholder="https://..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            </div>
+                            <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Enregistrer le Logo Officiel</button>
+                        </form>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'sanctions') {
+                let reports = DB.get('sanction_reports') || [];
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                            <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-gavel mr-2"></i>Registre des Fiches de Signalement & Sanctions</h3>
+                            <button onclick="exportSanctionReportsExcel()" class="px-4 py-2 bg-red-900/80 hover:bg-red-800 text-red-200 border border-red-500/30 font-bold rounded-xl flex items-center gap-2"><i class="fa-solid fa-file-excel"></i> Exporter TOUTES les fiches (.xlsx)</button>
+                        </div>
+
+                        <div class="space-y-3 max-h-96 overflow-y-auto">
+                            ${reports.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune fiche de sanction enregistrée.</p>' : ''}
+                            ${reports.map(r => `
+                                <div class="p-4 bg-stone-900 rounded-2xl border border-red-900/40 space-y-2">
+                                    <div class="flex justify-between items-center border-b border-amber-900/30 pb-2">
+                                        <b class="text-red-400 text-sm">Compte : ${r.target}</b>
+                                        <span class="text-[10px] text-amber-200/50">Sanctionné le ${r.date} par ${r.admin}</span>
+                                    </div>
+                                    <p class="text-amber-200"><b>Motifs :</b> ${r.reasons.join(', ')}</p>
+                                    <p class="text-amber-100"><b>Détails :</b> ${r.details}</p>
+                                    <div class="flex justify-between text-[11px] font-bold text-amber-300 pt-1">
+                                        <span><b>Mesure :</b> ${r.type} ${r.pointsDeducted ? `(-${r.pointsDeducted} pts)` : ''}</span>
+                                        <span><b>Durée :</b> ${r.duration}</span>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'logs') {
+                let logs = DB.get('admin_logs') || [];
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-clock-rotate-left mr-2"></i>Journal d'Activité et Traçabilité des Administrateurs</h3>
+                        <div class="space-y-2 max-h-80 overflow-y-auto">
+                            ${logs.length === 0 ? '<p class="text-amber-200/50 text-center py-4">Aucune activité enregistrée.</p>' : ''}
+                            ${logs.map(l => `
+                                <div class="p-3 bg-stone-900/90 rounded-xl border border-amber-900/30 flex justify-between items-center">
+                                    <div>
+                                        <span class="font-bold text-amber-400">${l.admin}</span> ➔ <span class="text-white">${l.action}</span> <span class="text-amber-200/60">(${l.target})</span>
+                                    </div>
+                                    <span class="text-[10px] text-amber-200/50">${l.date}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'apk') {
+                let apkConfig = DB.get('app_apk_config') || { fileUrl: '', instructions: '' };
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-brands fa-android text-green-500 mr-2"></i>Configuration Fichier Application APK & Instructions</h3>
+                        <form onsubmit="adminSaveApkConfig(event)" class="space-y-3">
+                            <div>
+                                <label class="block font-bold text-amber-200 mb-1">Fichier APK (depuis votre appareil) :</label>
+                                <input type="file" id="apk-file-inp" accept=".apk" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
+                            </div>
+                            <div>
+                                <label class="block font-bold text-amber-200 mb-1">Ou Lien URL direct vers le fichier APK :</label>
+                                <input type="url" id="apk-url-inp" value="${apkConfig.fileUrl || ''}" placeholder="https://..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            </div>
+                            <div>
+                                <label class="block font-bold text-amber-200 mb-1">Instructions de téléchargement & installation pour les utilisateurs :</label>
+                                <textarea id="apk-instructions-inp" class="w-full p-3 bg-stone-900 border rounded-xl text-amber-100 h-32 resize-none" placeholder="1. Téléchargez le fichier...\n2. Autorisez l'installation...">${apkConfig.instructions || ''}</textarea>
+                            </div>
+                            <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Enregistrer la configuration APK</button>
+                        </form>
+                    </div>
+                `;
+            }
+
+            if (state.adminSub === 'crosswords') {
+                let crosswords = DB.get('crosswords') || [];
+                return `
+                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-puzzle-piece mr-2"></i>Création & Gestion des Mots Croisés</h3>
+                        <form onsubmit="adminCreateCrossword(event)" class="space-y-4 p-4 bg-stone-900/80 rounded-2xl border space-y-3">
+                            <h4 class="font-bold text-amber-400">Nouvelle Grille de Mots Croisés</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <input type="text" id="cw-title" required placeholder="Titre de la grille (ex: Merchandising)..." class="p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                                <select id="cw-level" class="p-2.5 bg-stone-950 border rounded-xl text-amber-300 font-bold">
+                                    <option value="facile">Niveau Facile</option>
+                                    <option value="moyen">Niveau Moyen</option>
+                                    <option value="difficile">Niveau Difficile</option>
+                                </select>
+                            </div>
+
+                            <div id="cw-clues-builder" class="space-y-2">
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-2 cw-clue-row">
+                                    <input type="text" placeholder="Définition..." required class="md:col-span-2 p-2 bg-stone-950 border rounded-xl text-amber-100 clue-q">
+                                    <input type="text" placeholder="Mot à trouver (ex: PRIX)" required class="p-2 bg-stone-950 border rounded-xl text-amber-300 font-bold uppercase clue-a">
+                                </div>
+                            </div>
+
+                            <button type="button" onclick="addAdminCrosswordRow()" class="px-3 py-1.5 bg-stone-800 text-amber-300 font-bold rounded-xl text-xs"><i class="fa-solid fa-plus mr-1"></i> Ajouter une définition</button>
+                            <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Publier la grille de mots croisés</button>
+                        </form>
+
+                        <div class="space-y-2 pt-2">
+                            <h4 class="font-bold text-amber-300 text-xs">Grilles existantes :</h4>
+                            ${crosswords.map((cw, idx) => `
+                                <div class="p-3 bg-stone-900 rounded-xl border flex justify-between items-center">
+                                    <div>
+                                        <b class="text-amber-200">${cw.title}</b> (${cw.level}) - ${cw.clues.length} mots
+                                    </div>
+                                    <button onclick="deleteCrossword(${idx})" class="px-3 py-1 bg-red-900/40 text-red-300 border border-red-500/30 font-bold rounded-lg text-xs">Supprimer</button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
             if (state.adminSub === 'users') {
                 return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
                         <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-users-gear mr-2"></i>Gestion des Comptes & Mots de Passe Provisoires</h3>
+                        
+                        <!-- IMPORTATION EN MASSE EXCEL/CSV -->
+                        <div class="p-4 bg-stone-900/80 rounded-2xl border space-y-2">
+                            <h4 class="font-bold text-amber-400 text-xs"><i class="fa-solid fa-file-import mr-1"></i>Importation en masse d'élèves (CSV / Excel)</h4>
+                            <input type="file" id="bulk-users-file" accept=".csv, .xlsx" onchange="handleBulkUsersImport(event)" class="w-full p-2 bg-stone-950 border rounded-xl text-amber-100 text-xs">
+                        </div>
+
                         <form onsubmit="adminCreateUser(event)" class="p-4 bg-stone-900/80 rounded-2xl border space-y-2">
                             <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
                                 <input type="text" id="uc-user" required placeholder="Identifiant..." class="p-2.5 bg-stone-950 border rounded-xl text-amber-100">
@@ -1265,7 +1750,7 @@
                                     <option value="admin">Administrateur</option>
                                 </select>
                             </div>
-                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Créer le Compte</button>
+                            <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Créer le Compte Uniquement</button>
                         </form>
                         <div class="space-y-2 max-h-60 overflow-y-auto">
                             ${users.map(u => `
@@ -1275,6 +1760,7 @@
                                         <div class="text-[10px] text-amber-200/65">ID : <b>${u.username}</b> | MDP : <code class="text-amber-400 bg-stone-950 px-1 rounded font-bold">${u.password}</code></div>
                                     </div>
                                     <div class="flex items-center gap-1">
+                                        <button onclick="openSanctionModal('${u.username}')" class="px-2 py-1 bg-red-900 hover:bg-red-800 text-red-200 border border-red-500/30 rounded-lg font-bold text-[10px]"><i class="fa-solid fa-gavel"></i> Sanctionner</button>
                                         <select onchange="adminChangeRole('${u.username}', this.value)" class="p-1.5 bg-stone-950 border rounded-lg text-amber-300 font-bold">
                                             <option value="student" ${u.role==='student'?'selected':''}>Élève</option>
                                             <option value="delegate" ${u.role==='delegate'?'selected':''}>Délégué</option>
@@ -1358,51 +1844,11 @@
                                                         <button onclick="saveAppreciation('${u.username}', '${tKey}')" class="w-full py-1 dyn-btn text-white font-bold rounded-lg text-[10px]">Enregistrer ${tKey}</button>
                                                     </div>
                                                 `;
-                                            }).join('')}
+                                            })}
                                         </div>
                                     </div>
                                 `;
                             }).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-
-            if (state.adminSub === 'surveillance') {
-                let pMsgs = msgs.filter(m => m.type === 'private');
-                let convs = {};
-                pMsgs.forEach(m => {
-                    let key = [m.sender, m.recipient].sort().join(' <-> ');
-                    if (!convs[key]) convs[key] = [];
-                    convs[key].push(m);
-                });
-
-                return `
-                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-user-secret mr-2"></i>Surveillance des Conversations Privées</h3>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                            <div class="space-y-2 max-h-80 overflow-y-auto">
-                                <h4 class="font-bold text-amber-200 text-xs">Conversations Privées</h4>
-                                ${Object.keys(convs).length === 0 ? '<p class="text-amber-200/40 italic">Aucun MP.</p>' : ''}
-                                ${Object.keys(convs).map(k => `
-                                    <div onclick="state.activeConvFilter='${k}';render()" class="p-2.5 rounded-xl border cursor-pointer ${state.activeConvFilter===k?'bg-amber-500/20 border-amber-400':'bg-stone-900 border-amber-900/30'}">
-                                        <b class="text-amber-300">${k}</b>
-                                        <p class="text-[10px] text-amber-200/60">${convs[k].length} message(s)</p>
-                                    </div>
-                                `).join('')}
-                            </div>
-                            <div class="md:col-span-2 space-y-2 max-h-80 overflow-y-auto p-3 bg-stone-950 rounded-2xl border">
-                                <h4 class="font-bold text-amber-200 text-xs border-b border-amber-900/40 pb-2">Contenu de la conversation sélectionnée</h4>
-                                ${state.activeConvFilter && convs[state.activeConvFilter] ? convs[state.activeConvFilter].map(m => `
-                                    <div class="p-2 bg-stone-900 rounded-xl border space-y-1">
-                                        <div class="flex justify-between text-[10px] text-amber-400">
-                                            <b>${m.sender} ➔ ${m.recipient}</b>
-                                            <span>${m.time}</span>
-                                        </div>
-                                        <p class="text-amber-100">${m.text}</p>
-                                    </div>
-                                `).join('') : '<p class="text-amber-200/40 italic py-10 text-center">Cliquez sur une conversation à gauche pour lire les messages.</p>'}
-                            </div>
                         </div>
                     </div>
                 `;
@@ -1437,12 +1883,12 @@
                             </form>
                         </div>
                         <div class="dyn-card border p-6 rounded-3xl space-y-3">
-                            <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-book-open mr-2"></i>Publier une Fiche de Révision</h3>
+                            <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-book-open mr-2"></i>Publier une Fiche de Révision ou Modèle CV</h3>
                             <form onsubmit="adminUploadRevision(event)" class="space-y-2">
-                                <input type="text" id="rev-title" required placeholder="Titre de la fiche..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <input type="text" id="rev-title" required placeholder="Titre de la fiche ou document..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                                 <input type="file" id="rev-file" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
                                 <input type="url" id="rev-url" placeholder="Ou lien URL externe..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                                <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier la Fiche de Révision</button>
+                                <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier la Fiche / Modèle</button>
                             </form>
                         </div>
                     </div>
@@ -1500,15 +1946,10 @@
                                 <span><i class="fa-solid fa-lightbulb text-green-500 mr-2"></i> Exporter la boîte à idées</span>
                                 <i class="fa-solid fa-download text-xs"></i>
                             </button>
-                        </div>
-                        <div class="pt-4 border-t border-amber-900/40 space-y-2">
-                            <h4 class="font-bold text-amber-300">Exporter un compte spécifique (Excel) :</h4>
-                            <div class="flex gap-2">
-                                <select id="export-username-select" class="p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold flex-1">
-                                    ${users.map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.username})</option>`).join('')}
-                                </select>
-                                <button onclick="exportSingleAccountExcel()" class="px-4 py-2.5 dyn-btn text-white font-bold rounded-xl">Exporter ce compte</button>
-                            </div>
+                            <button onclick="exportSanctionReportsExcel()" class="p-4 bg-stone-900 border rounded-2xl font-bold text-amber-200 hover:border-amber-400 text-left flex items-center justify-between">
+                                <span><i class="fa-solid fa-gavel text-red-500 mr-2"></i> Exporter le Registre des Sanctions</span>
+                                <i class="fa-solid fa-download text-xs"></i>
+                            </button>
                         </div>
                     </div>
                 `;
@@ -1528,6 +1969,220 @@
             }
 
             return `<div class="dyn-card border p-6 rounded-3xl text-center text-amber-200/50">Sélectionnez une option dans le panneau d'administration.</div>`;
+        }
+
+        // --- GESTION DES SANCTIONS ADMIN ---
+        function openSanctionModal(username) {
+            let users = DB.get('users') || [];
+            let u = users.find(x => x.username === username);
+            if (!u) return;
+
+            document.getElementById('sanction-target-user').value = username;
+            document.getElementById('sanction-target-display').textContent = `${u.pseudo || u.username} (${u.realName || u.username})`;
+            document.querySelectorAll('.sanction-reason').forEach(cb => cb.checked = false);
+            document.getElementById('sanction-details').value = '';
+            document.getElementById('sanction-points-val').value = '20';
+            toggleModal('sanction-modal', true);
+        }
+
+        async function submitSanctionForm(e) {
+            e.preventDefault();
+            let admin = getCurrentUser();
+            let target = document.getElementById('sanction-target-user').value;
+            let details = document.getElementById('sanction-details').value.trim();
+            let type = document.getElementById('sanction-type').value;
+            let duration = document.getElementById('sanction-duration').value.trim();
+            let pointsDeducted = parseInt(document.getElementById('sanction-points-val').value) || 0;
+
+            let reasons = [];
+            document.querySelectorAll('.sanction-reason:checked').forEach(cb => reasons.push(cb.value));
+
+            if (reasons.length === 0) return alert("Veuillez cocher au moins un motif de signalement.");
+
+            let report = {
+                id: 'report_' + Date.now(),
+                admin: admin ? admin.username : 'Charlesadmin',
+                target,
+                reasons,
+                details,
+                type,
+                duration,
+                pointsDeducted,
+                date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+            };
+
+            let reports = DB.get('sanction_reports') || [];
+            reports.unshift(report);
+            await DB.set('sanction_reports', reports);
+
+            // Application directe sur l'utilisateur
+            let users = DB.get('users') || [];
+            let uIdx = users.findIndex(x => x.username === target);
+            if (uIdx !== -1) {
+                if (!users[uIdx].sanctions) users[uIdx].sanctions = [];
+                if (!users[uIdx].sanctions.includes(type)) users[uIdx].sanctions.push(type);
+
+                if (type === 'ban_definitif' || type === 'suspension_temp') {
+                    users[uIdx].status = 'masked';
+                }
+                await DB.set('users', users);
+            }
+
+            // Retrait de points au classement (permet les négatifs)
+            if (pointsDeducted > 0) {
+                let scores = DB.get('user_scores') || {};
+                let currentScore = scores[target] !== undefined ? scores[target] : 0;
+                scores[target] = currentScore - pointsDeducted;
+                await DB.set('user_scores', scores);
+            }
+
+            await logAdminAction(`Sanction appliquée (${type}, -${pointsDeducted} pts)`, target);
+            await pushGlobalNotification("⚠️ Notification Disciplinaire", `Une mesure disciplinaire (${type}) entraînant un retrait de ${pointsDeducted} pts a été appliquée sur votre compte.`, target);
+
+            toggleModal('sanction-modal', false);
+            showToast("Sanction enregistrée !", "Fiche envoyée et synchronisée sur Firebase.");
+        }
+
+        function exportSanctionReportsExcel() {
+            let reports = DB.get('sanction_reports') || [];
+            let data = reports.map(r => ({
+                "ID Fiche": r.id,
+                "Compte Sanctionné": r.target,
+                "Administrateur": r.admin,
+                "Motifs": r.reasons.join(', '),
+                "Détails de l'infraction": r.details,
+                "Mesure / Sanction": r.type,
+                "Points retirés": r.pointsDeducted || 0,
+                "Durée": r.duration,
+                "Date de décision": r.date
+            }));
+
+            let wb = XLSX.utils.book_new();
+            let ws = XLSX.utils.json_to_sheet(data);
+            XLSX.utils.book_append_sheet(wb, ws, "Fiches de Sanctions");
+            XLSX.writeFile(wb, "leqg_registre_sanctions.xlsx");
+
+            showToast("Export Excel réussi !", "Fichier des fiches de sanctions téléchargé.");
+        }
+
+        async function adminSaveLogo(e) {
+            e.preventDefault();
+            let file = document.getElementById('logo-file-inp').files[0];
+            let url = document.getElementById('logo-url-inp').value.trim();
+            let logoData = url;
+
+            if (file) {
+                logoData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); });
+            }
+
+            if (logoData) {
+                await DB.set('app_logo_url', logoData);
+                await logAdminAction("Logo du site mis à jour", "Nouveau logo");
+                showToast("Logo mis à jour !", "Visible sur l'en-tête et la connexion.");
+            }
+        }
+
+        async function handleBulkUsersImport(e) {
+            let file = e.target.files[0];
+            if (!file) return;
+
+            let reader = new FileReader();
+            reader.onload = async function(evt) {
+                try {
+                    let data = evt.target.result;
+                    let workbook = XLSX.read(data, { type: 'binary' });
+                    let sheetName = workbook.SheetNames[0];
+                    let json = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+                    let users = DB.get('users') || [];
+                    let addedCount = 0;
+
+                    json.forEach(row => {
+                        let username = row['Identifiant'] || row['username'] || row['ID'];
+                        let password = row['Mot de passe'] || row['password'] || 'qg2026';
+                        let role = row['Rôle'] || row['role'] || 'student';
+
+                        if (username && !users.some(u => u.username === username)) {
+                            users.push({
+                                username: String(username).trim(),
+                                password: String(password).trim(),
+                                role: String(role).trim(),
+                                status: 'active',
+                                mustChangePass: true,
+                                realName: String(username).trim(),
+                                pseudo: String(username).trim()
+                            });
+                            addedCount++;
+                        }
+                    });
+
+                    await DB.set('users', users);
+                    await logAdminAction(`Importation en masse (${addedCount} comptes)`, "Excel/CSV");
+                    showToast("Importation réussie !", `${addedCount} comptes ajoutés sur LE QG.`);
+                } catch(err) {
+                    alert("Erreur lors de la lecture du fichier : " + err.message);
+                }
+            };
+            reader.readAsBinaryString(file);
+        }
+
+        async function adminSaveApkConfig(e) {
+            e.preventDefault();
+            let file = document.getElementById('apk-file-inp').files[0];
+            let url = document.getElementById('apk-url-inp').value.trim();
+            let instructions = document.getElementById('apk-instructions-inp').value.trim();
+
+            let fileUrl = url;
+            if (file) {
+                fileUrl = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); });
+            }
+
+            await DB.set('app_apk_config', { fileUrl, instructions });
+            await pushGlobalNotification("📱 Mise à jour de l'Application", "L'application APK a été mise à jour ! Cliquez sur 'Télécharger l'app' pour l'installer.", 'all');
+            showToast("Configuration APK enregistrée !", "");
+        }
+
+        function addAdminCrosswordRow() {
+            let container = document.getElementById('cw-clues-builder');
+            let div = document.createElement('div');
+            div.className = "grid grid-cols-1 md:grid-cols-3 gap-2 cw-clue-row";
+            div.innerHTML = `
+                <input type="text" placeholder="Définition..." required class="md:col-span-2 p-2 bg-stone-950 border rounded-xl text-amber-100 clue-q">
+                <input type="text" placeholder="Mot à trouver (ex: PRIX)" required class="p-2 bg-stone-950 border rounded-xl text-amber-300 font-bold uppercase clue-a">
+            `;
+            container.appendChild(div);
+        }
+
+        async function adminCreateCrossword(e) {
+            e.preventDefault();
+            let title = document.getElementById('cw-title').value.trim();
+            let level = document.getElementById('cw-level').value;
+            let rows = document.querySelectorAll('.cw-clue-row');
+            let clues = [];
+
+            rows.forEach(r => {
+                let q = r.querySelector('.clue-q').value.trim();
+                let a = r.querySelector('.clue-a').value.trim().toUpperCase();
+                if (q && a) clues.push({ q, a });
+            });
+
+            if (clues.length === 0) return alert("Ajoutez au moins une définition !");
+
+            let crosswords = DB.get('crosswords') || [];
+            let newCw = { id: 'cw_' + Date.now(), title, level, clues };
+            crosswords.unshift(newCw);
+            await DB.set('crosswords', crosswords);
+
+            await pushGlobalNotification("🧩 Nouveaux Mots Croisés", `Une nouvelle grille de mots croisés "${title}" (${level}) est disponible !`, 'all');
+            showToast("Mots croisés publiés !", "");
+        }
+
+        async function deleteCrossword(idx) {
+            if (!confirm("Voulez-vous supprimer cette grille ?")) return;
+            let crosswords = DB.get('crosswords') || [];
+            crosswords.splice(idx, 1);
+            await DB.set('crosswords', crosswords);
+            showToast("Grille supprimée", "");
         }
 
         function addAdminQuizQuestionRow() {
@@ -1592,6 +2247,8 @@
             };
             quizzes.unshift(newQuiz);
             await DB.set('quizzes', quizzes);
+
+            await pushGlobalNotification("❓ Nouveau Quiz Publié", `Un nouveau quiz "${title}" (${subject}) est en ligne !`, 'all');
             showToast("Quiz publié !", "Le quiz est désormais accessible dans l'onglet Quiz.");
         }
 
@@ -1603,6 +2260,7 @@
             if (type === 'all_accounts') {
                 let users = DB.get('users') || [];
                 let submissions = DB.get('quiz_submissions') || {};
+                let scores = DB.get('user_scores') || {};
                 data = users.map(u => {
                     let userSubs = submissions[u.username] || {};
                     let totalQ = 0, totalCorrect = 0;
@@ -1612,9 +2270,11 @@
                     return {
                         "Identifiant": u.username,
                         "Mot de passe": u.password,
+                        "Score Classe (pts)": scores[u.username] !== undefined ? scores[u.username] : 0,
                         "Progression au Quiz": progText,
                         "Date de naissance": u.birthDate || 'Non renseignée',
-                        "Adresse Mail": u.email || 'Non renseignée'
+                        "Adresse Mail": u.email || 'Non renseignée',
+                        "Sanctions actives": (u.sanctions || []).join(', ') || 'Aucune'
                     };
                 });
                 let ws = XLSX.utils.json_to_sheet(data);
@@ -1652,34 +2312,6 @@
             showToast("Export Excel réussi !", "Fichier .xlsx téléchargé.");
         }
 
-        function exportSingleAccountExcel() {
-            let uname = document.getElementById('export-username-select').value;
-            let users = DB.get('users') || [];
-            let u = users.find(x => x.username === uname);
-            if (!u) return;
-
-            let submissions = DB.get('quiz_submissions') || {};
-            let userSubs = submissions[u.username] || {};
-            let totalQ = 0, totalCorrect = 0;
-            Object.values(userSubs).forEach(s => { totalQ += s.total; totalCorrect += s.score; });
-            let progText = totalQ > 0 ? `${Math.round((totalCorrect / totalQ) * 100)}% (${totalCorrect}/${totalQ})` : 'Aucun quiz effectué';
-
-            let data = [{
-                "Identifiant": u.username,
-                "Mot de passe": u.password,
-                "Progression au Quiz": progText,
-                "Date de naissance": u.birthDate || 'Non renseignée',
-                "Adresse Mail": u.email || 'Non renseignée'
-            }];
-
-            let wb = XLSX.utils.book_new();
-            let ws = XLSX.utils.json_to_sheet(data);
-            XLSX.utils.book_append_sheet(wb, ws, `Compte ${uname}`);
-            XLSX.writeFile(wb, `leqg_compte_${uname}.xlsx`);
-
-            showToast("Export Excel réussi !", `Fichier pour le compte ${uname} téléchargé.`);
-        }
-
         async function adminCreatePoll(e) {
             e.preventDefault();
             let question = document.getElementById('poll-q').value.trim();
@@ -1695,6 +2327,8 @@
                 voters: []
             });
             await DB.set('polls', polls);
+
+            await pushGlobalNotification("📊 Nouveau Sondage", `Un nouveau sondage est disponible : "${question}"`, 'all');
             showToast("Sondage lancé !", "Le sondage est en ligne pour les élèves.");
         }
 
@@ -1706,6 +2340,8 @@
             let formations = DB.get('formations') || [];
             formations.unshift({ title, description, link });
             await DB.set('formations', formations);
+
+            await pushGlobalNotification("🎓 Orientation Post-Bac", `Une nouvelle formation a été ajoutée : "${title}"`, 'all');
             showToast("Formation publiée !", "");
         }
 
@@ -1741,12 +2377,18 @@
 
             apps[username][tKey].published = !apps[username][tKey].published;
             await DB.set('appreciations', apps);
+
+            if (apps[username][tKey].published) {
+                await pushGlobalNotification("📜 Bilan Trimestriel", `Votre appréciation pour le ${tKey} est maintenant disponible !`, username);
+            }
+
             showToast("Statut de publication modifié", "");
             render();
         }
 
         async function setThemePreset(preset, btnColor, cardBg, borderColor, bgUrl) {
             await DB.set('site_theme', { preset, btnColor, cardBg, borderColor, bgUrl });
+            await pushGlobalNotification("🎨 Nouveau Thème d'application", `Le thème de LE QG est passé en mode ${preset.toUpperCase()} !`, 'all');
             showToast("Thème appliqué !", "Le décor et les animations saisonnières sont actifs.");
         }
 
@@ -1769,6 +2411,8 @@
             let subjects = DB.get('exam_subjects') || [];
             subjects.push({ title, fileData, fileType: file ? file.type : 'url' });
             await DB.set('exam_subjects', subjects);
+
+            await pushGlobalNotification("📚 Sujet de Bac Publié", `Un nouveau sujet type Bac "${title}" est disponible dans l'onglet Épreuves !`, 'all');
             showToast("Sujet Bac publié !", "");
         }
 
@@ -1782,6 +2426,8 @@
             let sheets = DB.get('revision_sheets') || [];
             sheets.push({ title, fileData, fileType: file ? file.type : 'url' });
             await DB.set('revision_sheets', sheets);
+
+            await pushGlobalNotification("📖 Nouvelle Fiche de Révision / Modèle", `Le document "${title}" vient d'être ajouté !`, 'all');
             showToast("Fiche publiée !", "");
         }
 
@@ -1829,7 +2475,7 @@
         async function saveSetup(e) {
             e.preventDefault();
             let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
-            if (idx !== -1) {
+            if (src = idx !== -1) {
                 users[idx].realName = document.getElementById('s-realname').value;
                 users[idx].password = document.getElementById('s-pass').value;
                 users[idx].birthDate = document.getElementById('s-bdate').value;
@@ -1843,6 +2489,6 @@
 
         function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
         window.onload = init;
-</script>
+    </script>
 </body>
 </html>
