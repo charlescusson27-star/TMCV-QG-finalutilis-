@@ -1844,9 +1844,11 @@
         function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
         window.onload = init;
 </script>
-    <!-- ========================================== -->
-<!-- SECTION APK & LOGO - QG TMCV (À coller avant </body>) -->
+ <!-- ========================================== -->
+<!-- SECTION APK & LOGO - QG TMCV -->
 <!-- ========================================== -->
+
+<!-- Les éléments visuels (HTML) -->
 <div id="admin-apk-section" style="display:none; margin-top: 20px; padding: 20px; border: 1px solid #ccc; border-radius: 8px; background: #fff;">
     <h3>Gestion de l'application & Personnalisation</h3>
     
@@ -1898,6 +1900,7 @@
     </div>
 </div>
 
+<!-- Le code pour faire fonctionner tout ça (JavaScript) -->
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const apkFileInput = document.getElementById('apk-file-input');
