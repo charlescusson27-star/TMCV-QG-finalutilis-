@@ -1845,16 +1845,16 @@
         window.onload = init;
 </script>
     <!-- ========================================== -->
-<!-- PANEL ADMIN & FONCTIONNALITÉS APK / LOGO   -->
+<!-- GESTION APK & ADMIN - QG TMCV              -->
 <!-- ========================================== -->
 
-<!-- 1. PANNEAU ADMIN (Visible uniquement pour Charles Admin) -->
-<div id="admin-apk-section" style="display:none; margin: 20px auto; max-width: 800px; padding: 20px; border: 1px solid #ccc; border-radius: 8px; background: #ffffff; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+<!-- 1. Panneau Admin (S'affiche si l'identifiant stocké est CharlesAdmin) -->
+<div id="admin-apk-section" style="display:none; margin: 20px auto; max-width: 800px; padding: 20px; border: 1px solid #ccc; border-radius: 8px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
     <h3 style="margin-top:0; color: #333;">⚙️ Administration : APK & Personnalisation</h3>
     
     <!-- Option A : Upload de fichier APK -->
     <div style="margin-bottom: 15px;">
-        <label for="apk-file-input"><strong>1. Uploader un fichier APK :</strong></label><br>
+        <label for="apk-file-input"><strong>Uploader un fichier APK :</strong></label><br>
         <input type="file" id="apk-file-input" accept=".apk" style="margin-top: 5px;">
         <button id="upload-apk-btn" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">Envoyer le fichier</button>
         <progress id="apk-upload-progress" value="0" max="100" style="width: 100%; margin-top: 5px; display:none;"></progress>
@@ -1864,7 +1864,7 @@
 
     <!-- Option B : Lien direct APK -->
     <div style="margin-bottom: 15px;">
-        <label for="apk-url-input"><strong>2. Ou définir un lien direct vers l'APK :</strong></label><br>
+        <label for="apk-url-input"><strong>Ou définir un lien direct vers l'APK :</strong></label><br>
         <input type="url" id="apk-url-input" placeholder="https://exemple.com/mon-app.apk" style="width: 70%; padding: 6px; margin-top: 5px;">
         <button id="save-apk-url-btn" style="margin-left: 10px; padding: 6px 10px; cursor: pointer;">Enregistrer le lien</button>
     </div>
@@ -1873,8 +1873,8 @@
 
     <!-- Option C : Instructions d'installation -->
     <div style="margin-bottom: 15px;">
-        <label for="apk-instructions-input"><strong>3. Instructions d'installation (affichées aux utilisateurs) :</strong></label><br>
-        <textarea id="apk-instructions-input" rows="4" placeholder="Ex: 1. Téléchargez le fichier. 2. Autorisez les sources inconnues. 3. Installez l'application." style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;"></textarea>
+        <label for="apk-instructions-input"><strong>Instructions d'installation (affichées aux utilisateurs) :</strong></label><br>
+        <textarea id="apk-instructions-input" rows="4" placeholder="Ex: 1. Téléchargez le fichier. 2. Autorisez l'installation..." style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;"></textarea>
         <button id="save-apk-instructions-btn" style="margin-top: 8px; background: #007bff; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-weight: bold;">Enregistrer les instructions</button>
     </div>
 
@@ -1882,7 +1882,7 @@
 
     <!-- Option D : Upload du Logo -->
     <div>
-        <label for="logo-file-input"><strong>4. Uploader le logo (Page de connexion) :</strong></label><br>
+        <label for="logo-file-input"><strong>Uploader le logo (Page de connexion) :</strong></label><br>
         <input type="file" id="logo-file-input" accept="image/*" style="margin-top: 5px;">
         <button id="upload-logo-btn" style="margin-left: 10px; padding: 5px 10px; cursor: pointer;">Envoyer le logo</button>
         <progress id="logo-upload-progress" value="0" max="100" style="width: 100%; margin-top: 5px; display:none;"></progress>
@@ -1891,10 +1891,10 @@
     <p id="apk-status-msg" style="margin-top: 15px; font-weight: bold;"></p>
 </div>
 
-<!-- 2. CONTENEUR BOUTON INSTALLER (Placé où tu souhaites côté utilisateur) -->
+<!-- 2. Bouton d'installation côté utilisateur -->
 <div id="user-apk-container" style="display:inline-block; margin-left: 10px;"></div>
 
-<!-- 3. MODALE D'INSTRUCTIONS UTILISATEUR -->
+<!-- 3. Modale des instructions -->
 <div id="apk-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; justify-content:center; align-items:center;">
     <div style="background:white; padding:25px; border-radius:8px; max-width:450px; width:90%; box-shadow: 0 4px 10px rgba(0,0,0,0.3); position:relative;">
         <h3 style="margin-top:0; color: #333;">📱 Installation de QG TMCV</h3>
@@ -1906,10 +1906,9 @@
     </div>
 </div>
 
-<!-- 4. SCRIPT LOGIQUE JAVASCRIPT -->
+<!-- 4. Logique JavaScript -->
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-    // Éléments du DOM
     const apkFileInput = document.getElementById('apk-file-input');
     const uploadApkBtn = document.getElementById('upload-apk-btn');
     const apkUploadProgress = document.getElementById('apk-upload-progress');
@@ -1929,19 +1928,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const apkModalInstructions = document.getElementById('apk-modal-instructions');
     const closeApkModalBtn = document.getElementById('close-apk-modal');
 
-    // Vérification Authentification Admin
-    if (typeof firebase !== 'undefined' && firebase.auth) {
-        firebase.auth().onAuthStateChanged((user) => {
-            if (user && user.email === "charles.admin@qgtmcv.fr") { 
+    // Vérification de l'identifiant admin (CharlesAdmin) dans le stockage local ou via l'état de l'app
+    function checkAdminAccess() {
+        const currentAdminUser = localStorage.getItem('currentUser') || sessionStorage.getItem('currentUser');
+        // Si ton site stocke l'identifiant dans une variable globale ou le localStorage sous le nom CharlesAdmin
+        if (currentAdminUser === "CharlesAdmin" || (typeof currentUsername !== 'undefined' && currentUsername === "CharlesAdmin")) {
+            if(adminApkSection) adminApkSection.style.display = 'block';
+            loadAdminData();
+        } else {
+            // Option de secours : vérifie si un élément UI affichant l'admin est présent sur la page
+            const adminElement = document.querySelector('.admin-user, [data-user="CharlesAdmin"]');
+            if(adminElement || (window.location.search.includes('admin=true'))) {
                 if(adminApkSection) adminApkSection.style.display = 'block';
-                loadAdminData(); 
-            } else {
-                if(adminApkSection) adminApkSection.style.display = 'none';
+                loadAdminData();
             }
-        });
+        }
     }
 
-    // Charger les données actuelles dans le panneau admin
+    // Charger les données de configuration depuis Firestore
     function loadAdminData() {
         if (typeof db !== 'undefined') {
             db.collection("settings").doc("appConfig").get().then((doc) => {
@@ -1953,7 +1957,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Upload du fichier APK vers Firebase Storage
+    // Upload APK vers Firebase Storage
     if(uploadApkBtn) {
         uploadApkBtn.addEventListener('click', () => {
             const file = apkFileInput.files[0];
@@ -1964,7 +1968,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             uploadTask.on('state_changed', 
                 (snapshot) => { apkUploadProgress.value = (snapshot.bytesTransferred / snapshot.totalBytes) * 100; }, 
-                (error) => { console.error(error); apkStatusMsg.style.color = "red"; apkStatusMsg.textContent = "Erreur lors de l'upload de l'APK."; }, 
+                (error) => { console.error(error); apkStatusMsg.style.color = "red"; apkStatusMsg.textContent = "Erreur upload APK."; }, 
                 () => {
                     uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
                         saveFieldToDatabase({ apkUrl: downloadURL }, "APK mis à jour avec succès !");
@@ -1974,18 +1978,18 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Upload du Logo du site vers Firebase Storage
+    // Upload Logo vers Firebase Storage
     if(uploadLogoBtn) {
         uploadLogoBtn.addEventListener('click', () => {
             const file = logoFileInput.files[0];
-            if (!file) { alert("Veuillez sélectionner une image !"); return; }
+            if (!file) { alert("Veuillez sélectionner une image pour le logo !"); return; }
             logoUploadProgress.style.display = 'block';
             const storageRef = firebase.storage().ref('logos/qgtmcv-logo.png');
             const uploadTask = storageRef.put(file);
 
             uploadTask.on('state_changed', 
                 (snapshot) => { logoUploadProgress.value = (snapshot.bytesTransferred / snapshot.totalBytes) * 100; }, 
-                (error) => { console.error(error); apkStatusMsg.style.color = "red"; apkStatusMsg.textContent = "Erreur lors de l'upload du logo."; }, 
+                (error) => { console.error(error); apkStatusMsg.style.color = "red"; apkStatusMsg.textContent = "Erreur upload logo."; }, 
                 () => {
                     uploadTask.snapshot.ref.getDownloadURL().then((downloadURL) => {
                         saveFieldToDatabase({ logoUrl: downloadURL }, "Logo mis à jour avec succès !");
@@ -1996,16 +2000,16 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Enregistrement par lien URL APK
+    // Enregistrement par lien direct
     if(saveApkUrlBtn) {
         saveApkUrlBtn.addEventListener('click', () => {
             const url = apkUrlInput.value.trim();
-            if (!url) { alert("Veuillez saisir un lien valide !"); return; }
+            if (!url) { alert("Lien invalide !"); return; }
             saveFieldToDatabase({ apkUrl: url }, "Lien APK mis à jour !");
         });
     }
 
-    // Enregistrement des Instructions
+    // Enregistrement des instructions
     if(saveApkInstructionsBtn) {
         saveApkInstructionsBtn.addEventListener('click', () => {
             const instructions = apkInstructionsInput.value.trim();
@@ -2013,7 +2017,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Sauvegarde générique dans Firestore
+    // Sauvegarde Firestore
     function saveFieldToDatabase(dataObj, successMessage) {
         if (typeof db !== 'undefined') {
             db.collection("settings").doc("appConfig").set(dataObj, { merge: true })
@@ -2027,28 +2031,26 @@ document.addEventListener('DOMContentLoaded', () => {
             .catch((error) => {
                 console.error(error);
                 apkStatusMsg.style.color = "red";
-                apkStatusMsg.textContent = "Erreur lors de la sauvegarde.";
+                apkStatusMsg.textContent = "Erreur de sauvegarde.";
             });
         }
     }
 
-    // Chargement du bouton "Installer l'APK" pour les utilisateurs
+    // Chargement du bouton côté utilisateur
     function loadUserApkButton() {
         if (typeof db !== 'undefined') {
             db.collection("settings").doc("appConfig").get().then((doc) => {
                 if (doc.exists && doc.data().apkUrl) {
                     const apkUrl = doc.data().apkUrl;
-                    const instructions = doc.data().apkInstructions || "1. Ouvrez le fichier téléchargé.\n2. Autorisez l'installation si votre téléphone le demande.";
+                    const instructions = doc.data().apkInstructions || "1. Ouvrez le fichier.\n2. Suivez les instructions.";
 
                     if(userApkContainer) {
                         userApkContainer.innerHTML = `
-                            <button id="trigger-apk-install" style="background-color: #28a745; color: white; padding: 8px 14px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
+                            <button id="trigger-apk-install" style="background-color: #28a745; color: white; padding: 8px 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; display: inline-flex; align-items: center; gap: 5px;">
                                 📥 Installer l'APK
                             </button>
                         `;
-
                         document.getElementById('trigger-apk-install').addEventListener('click', () => {
-                            // Téléchargement
                             const invisibleLink = document.createElement('a');
                             invisibleLink.href = apkUrl;
                             invisibleLink.download = 'QGTMCV.apk';
@@ -2056,28 +2058,26 @@ document.addEventListener('DOMContentLoaded', () => {
                             invisibleLink.click();
                             document.body.removeChild(invisibleLink);
 
-                            // Affichage des instructions
                             apkModalInstructions.textContent = instructions;
                             apkModal.style.display = 'flex';
                         });
                     }
                 } else if(userApkContainer) {
-                    userApkContainer.innerHTML = ''; 
+                    userApkContainer.innerHTML = '';
                 }
             }).catch(console.error);
         }
     }
 
-    // Insertion automatique du logo sur le formulaire de connexion
+    // Chargement du logo sur la page de connexion
     function loadWebsiteLogo() {
         if (typeof db !== 'undefined') {
             db.collection("settings").doc("appConfig").get().then((doc) => {
                 if (doc.exists && doc.data().logoUrl) {
                     const logoUrl = doc.data().logoUrl;
                     let logoContainer = document.getElementById('login-logo-container');
-                    
                     if (!logoContainer) {
-                        const loginInput = document.querySelector('input[type="email"], input[id*="email"], input[id*="user"], input[name*="email"], input[id*="identifiant"]');
+                        const loginInput = document.querySelector('input[type="email"], input[id*="email"], input[id*="user"], input[name*="email"], input[id*="identifiant"], input[id*="login"]');
                         if (loginInput && loginInput.form) {
                             logoContainer = document.createElement('div');
                             logoContainer.id = 'login-logo-container';
@@ -2087,21 +2087,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                     if (logoContainer) {
-                        logoContainer.innerHTML = `<img src="${logoUrl}" alt="Logo QG TMCV" style="max-width: 140px; height: auto; display: block; margin: 0 auto; border-radius: 8px;">`;
+                        logoContainer.innerHTML = `<img src="${logoUrl}" alt="Logo" style="max-width: 130px; height: auto; display: block; margin: 0 auto; border-radius: 8px;">`;
                     }
                 }
             }).catch(console.error);
         }
     }
 
-    // Fermeture de la fenêtre modale
     if(closeApkModalBtn) {
         closeApkModalBtn.addEventListener('click', () => {
             apkModal.style.display = 'none';
         });
     }
 
-    // Démarrage automatique
+    // Lancement des fonctions de chargement
+    checkAdminAccess();
     loadUserApkButton();
     loadWebsiteLogo();
 });
