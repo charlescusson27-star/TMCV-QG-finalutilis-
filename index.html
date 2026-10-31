@@ -156,9 +156,6 @@
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' }
         };
 
-        // Toutes les données applicatives sont centralisées dans Cloud Firestore.
-        // Les données sont stockées dans Firestore. Les fichiers externes sont référencés
-        // uniquement par leur lien, également enregistré dans Firestore.
         const DB = {
             get(k) { return cloudData[k] !== undefined ? cloudData[k] : null; },
             async set(k, val) {
@@ -166,9 +163,6 @@
                 await db.collection("leqg_data").doc(k).set({ value: val });
             }
         };
-
-        // Les ressources externes ne sont pas envoyées vers Firebase Storage : seul leur lien est enregistré.
-        // Seuls leurs liens sont enregistrés dans Firestore avec les données concernées.
 
         let state = {
             tab: 'home',
@@ -186,7 +180,6 @@
 
         async function init() {
             try {
-                // Synchronisation robuste et unitaire de chaque clé avec Firestore
                 for (let k of Object.keys(cloudData)) {
                     let docRef = db.collection("leqg_data").doc(k);
                     let doc = await docRef.get();
@@ -197,19 +190,16 @@
                     }
                 }
 
-                // Écoute en temps réel de chaque donnée : toute modification enregistrée
-                // dans Firestore est répercutée immédiatement sur les appareils connectés.
+                // Écoute en arrière-plan sans réinitialiser violemment l'interface utilisateur en cours de saisie
                 for (let k of Object.keys(cloudData)) {
                     db.collection("leqg_data").doc(k).onSnapshot((snap) => {
                         if (snap.exists && snap.data().value !== undefined) {
                             cloudData[k] = snap.data().value;
                             applyTheme();
-                            render();
                         }
                     }, (err) => console.error(`Erreur de synchronisation Firebase pour ${k}:`, err));
                 }
 
-                // S'assurer que le compte admin est toujours présent
                 let users = DB.get('users') || [];
                 if (!users.some(u => u.username === 'Charlesadmin')) {
                     users.unshift(cloudData.users[0]);
@@ -1080,6 +1070,7 @@
 
             await DB.set('polls', polls);
             showToast("Vote enregistré !", "Merci d'avoir participé au sondage.");
+            render();
         }
 
         function renderCrosswordsSection(user) {
@@ -1132,16 +1123,18 @@
         }
 
         async function checkWeeklyCrosswordAnswer(gridId, idx, expected) {
-            let val = document.getElementById(`cw-word-${idx}`).value.trim().toUpperCase();
+            let inputField = document.getElementById(`cw-word-${idx}`);
+            if (!inputField) return;
+            let val = inputField.value.trim().toUpperCase();
             if (val === expected.toUpperCase()) {
                 let user = getCurrentUser();
                 let subs = DB.get('crosswords_submissions') || {};
                 if (!subs[user.username]) subs[user.username] = {};
                 subs[user.username][gridId] = true;
                 await DB.set('crosswords_submissions', subs);
-                alert("Bravo, bonne réponse enregistrée pour la grille de la semaine ! 🌟");
+                showToast("Bonne réponse !", "Enregistrée pour la grille de la semaine.");
             } else {
-                alert("Ce n'est pas tout à fait correct, réessayez.");
+                showToast("Incorrect", "Ce n'est pas tout à fait correct, réessayez.");
             }
         }
 
@@ -1178,13 +1171,12 @@
                         </div>
                     </div>
                 </div>
-            </div>`;
+            `;
         }
 
         function selectNote(noteId) {
             state.activeNoteId = noteId;
-            let container = document.getElementById('app');
-            if (container) render();
+            render();
         }
 
         async function createNewNote() {
@@ -1224,11 +1216,12 @@
             await DB.set('personal_notes', notes);
             state.activeNoteId = null;
             showToast("Document supprimé", "");
+            render();
         }
 
         function renderFlashcardsTab(user) {
             let decks = DB.get('flashcards_decks') || [];
-            let visibleDecks = decks.filter(d => d.isPublic || d.author === user.username);
+            let visibleDecks = decks.filter(d => d.isPublic || d.author === (user.pseudo || user.username) || d.author === user.username);
 
             if (state.activeDeckId !== null) {
                 let deck = decks.find(d => d.id === state.activeDeckId);
@@ -1275,6 +1268,7 @@
 
         function addFlashcardRow() {
             let container = document.getElementById('fc-cards-container');
+            if (!container) return;
             if (container.children.length >= 100) return alert("Maximum 100 cartes par jeu !");
             let div = document.createElement('div');
             div.className = "grid grid-cols-2 gap-2 fc-row";
@@ -1288,15 +1282,22 @@
         async function createFlashcardDeck(e) {
             e.preventDefault();
             let user = getCurrentUser();
-            let title = document.getElementById('fc-title').value.trim();
-            let isPublic = document.getElementById('fc-public').checked;
+            let titleEl = document.getElementById('fc-title');
+            let publicEl = document.getElementById('fc-public');
+            if (!titleEl) return;
+            let title = titleEl.value.trim();
+            let isPublic = publicEl ? publicEl.checked : false;
             let rows = document.querySelectorAll('.fc-row');
             let cards = [];
 
             rows.forEach(r => {
-                let q = r.querySelector('.fc-q').value.trim();
-                let a = r.querySelector('.fc-a').value.trim();
-                if (q && a) cards.push({ q, a });
+                let qInp = r.querySelector('.fc-q');
+                let aInp = r.querySelector('.fc-a');
+                if (qInp && aInp) {
+                    let q = qInp.value.trim();
+                    let a = aInp.value.trim();
+                    if (q && a) cards.push({ q, a });
+                }
             });
 
             if (cards.length === 0) return alert("Ajoute au moins une carte !");
@@ -1306,11 +1307,11 @@
             decks.push(newDeck);
             await DB.set('flashcards_decks', decks);
             
-            // Notification de publication de flashcards
             if (isPublic) {
                 pushGlobalNotification("🃏 Nouvelles Flashcards", `Un nouveau jeu de flashcards public "${title}" a été publié par ${user.pseudo || user.username}.`);
             }
             showToast("Jeu enregistré !", "Ton jeu de flashcards est disponible.");
+            render();
         }
 
         function renderFlashcardSession(deck) {
@@ -1369,8 +1370,10 @@
             let avg = (totalWeighted / totalCoef).toFixed(2);
             let mention = avg >= 16 ? 'Très Bien 🏆' : avg >= 14 ? 'Bien 🌟' : avg >= 12 ? 'Assez Bien 👍' : avg >= 10 ? 'Admis (Sans mention) ✅' : 'Refusé ❌';
             let resDiv = document.getElementById('sim-full-result');
-            resDiv.classList.remove('hidden');
-            resDiv.innerHTML = `<h3 class="text-lg font-black text-amber-400">Résultat de la simulation</h3><div class="text-3xl font-extrabold text-white mt-1">${avg} / 20</div><p class="text-sm font-bold text-amber-300 mt-2">Mention : ${mention}</p>`;
+            if (resDiv) {
+                resDiv.classList.remove('hidden');
+                resDiv.innerHTML = `<h3 class="text-lg font-black text-amber-400">Résultat de la simulation</h3><div class="text-3xl font-extrabold text-white mt-1">${avg} / 20</div><p class="text-sm font-bold text-amber-300 mt-2">Mention : ${mention}</p>`;
+            }
         }
 
         function renderLeaderboardSection(u) {
@@ -1401,7 +1404,9 @@
 
         async function sendChatMessage(e) {
             e.preventDefault();
-            let user = getCurrentUser(), inp = document.getElementById('chat-inp'), text = inp.value.trim();
+            let user = getCurrentUser(), inp = document.getElementById('chat-inp');
+            if (!inp) return;
+            let text = inp.value.trim();
             if (!text) return;
             let msgs = DB.get('messages') || [];
             msgs.push({ sender: user.username, recipient: state.chatMode === 'private' ? state.targetUser : 'all', type: state.chatMode === 'private' ? 'private' : 'general', text, time: new Date().toLocaleTimeString() });
@@ -1465,9 +1470,13 @@
         async function sendMailMessage(e) {
             e.preventDefault();
             let user = getCurrentUser();
-            let recipient = document.getElementById('mail-recipient').value;
-            let subject = document.getElementById('mail-subject').value.trim();
-            let body = document.getElementById('mail-body').value.trim();
+            let recEl = document.getElementById('mail-recipient');
+            let subEl = document.getElementById('mail-subject');
+            let bodyEl = document.getElementById('mail-body');
+            if (!recEl || !subEl || !bodyEl) return;
+            let recipient = recEl.value;
+            let subject = subEl.value.trim();
+            let body = bodyEl.value.trim();
             let mails = DB.get('mails') || [];
 
             mails.unshift({
@@ -1481,6 +1490,7 @@
             await DB.set('mails', mails);
             pushGlobalNotification("✉️ Nouvel e-mail", `Vous avez reçu un e-mail de ${user.pseudo || user.username}.`, recipient === 'all' ? null : recipient);
             showToast("E-mail envoyé !", "Votre message a bien été transmis.");
+            render();
         }
 
         function renderProfileTab(user) {
@@ -1504,14 +1514,19 @@
         async function saveProfile(e) {
             e.preventDefault();
             let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
-            if (idx !== -1) {
-                users[idx].pseudo = document.getElementById('p-pseudo').value;
-                users[idx].avatarSkin = document.getElementById('p-skin').value;
-                users[idx].avatarAccessory = document.getElementById('p-acc').value;
-                users[idx].avatarHair = document.getElementById('p-hair').value;
+            let pseudoEl = document.getElementById('p-pseudo');
+            let skinEl = document.getElementById('p-skin');
+            let accEl = document.getElementById('p-acc');
+            let hairEl = document.getElementById('p-hair');
+            if (idx !== -1 && pseudoEl && skinEl && accEl && hairEl) {
+                users[idx].pseudo = pseudoEl.value;
+                users[idx].avatarSkin = skinEl.value;
+                users[idx].avatarAccessory = accEl.value;
+                users[idx].avatarHair = hairEl.value;
                 await DB.set('users', users);
                 sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
                 showToast("Profil mis à jour !", "");
+                render();
             }
         }
 
@@ -1564,13 +1579,17 @@
         async function submitIdea(e) {
             e.preventDefault();
             let user = getCurrentUser();
-            let title = document.getElementById('idea-title').value.trim();
-            let description = document.getElementById('idea-desc').value.trim();
+            let titleEl = document.getElementById('idea-title');
+            let descEl = document.getElementById('idea-desc');
+            if (!titleEl || !descEl) return;
+            let title = titleEl.value.trim();
+            let description = descEl.value.trim();
             let ideas = DB.get('ideas_board') || [];
             ideas.unshift({ title, description, author: user.pseudo || user.username, votes: 0, voters: [] });
             await DB.set('ideas_board', ideas);
             pushGlobalNotification("💡 Boîte à idées", `Une nouvelle idée "${title}" a été soumise par ${user.pseudo || user.username}.`);
             showToast("Idée soumise !", "Elle est maintenant visible pour les votes.");
+            render();
         }
 
         async function voteIdea(idx) {
@@ -1960,10 +1979,10 @@
                                                     <div class="p-3 bg-stone-950 rounded-xl border space-y-2">
                                                         <div class="flex justify-between items-center font-bold text-amber-200">
                                                             <span>${tKey}</span>
-                                                            <button onclick="togglePublishAppreciation('${u.username}', '${tKey}')" class="px-2 py-0.5 text-[9px] rounded font-bold ${appData.published?'bg-green-500/20 text-green-300':'bg-stone-800 text-amber-200/60'}">${appData.published?'Publié':'Masqué'}</button>
+                                                            <button type="button" onclick="togglePublishAppreciation('${u.username}', '${tKey}')" class="px-2 py-0.5 text-[9px] rounded font-bold ${appData.published?'bg-green-500/20 text-green-300':'bg-stone-800 text-amber-200/60'}">${appData.published?'Publié':'Masqué'}</button>
                                                         </div>
                                                         <textarea id="app-${u.username}-${tKey}" class="w-full p-2 bg-stone-900 border rounded-lg text-amber-100 text-xs h-16 resize-none" placeholder="Appréciation...">${appData.text || ''}</textarea>
-                                                        <button onclick="saveAppreciation('${u.username}', '${tKey}')" class="w-full py-1 dyn-btn text-white font-bold rounded-lg text-[10px]">Enregistrer ${tKey}</button>
+                                                        <button type="button" onclick="saveAppreciation('${u.username}', '${tKey}')" class="w-full py-1 dyn-btn text-white font-bold rounded-lg text-[10px]">Enregistrer ${tKey}</button>
                                                     </div>
                                                 `;
                                             }).join('')}
@@ -2137,20 +2156,25 @@
 
         async function adminSaveCGU(e) {
             e.preventDefault();
-            let text = document.getElementById('cgu-editor-text').value.trim();
+            let textEl = document.getElementById('cgu-editor-text');
+            if (!textEl) return;
+            let text = textEl.value.trim();
             let updatedDate = new Date().toISOString();
             await DB.set('cgu_config', { text, updatedDate });
             pushGlobalNotification("📄 Nouveaux termes e-QG", "Le Délégué a mis à jour les conditions d'utilisation d'e-QG.");
             showToast("CGU Publiées !", "Tous les utilisateurs devront les valider à leur prochaine interaction.");
+            render();
         }
 
         function toggleQuestTypeFields(val) {
             let taskOpts = document.getElementById('quest-task-options');
             let quizBuilder = document.getElementById('quest-quiz-builder');
+            if (!taskOpts || !quizBuilder) return;
             if (val === 'quiz') {
                 taskOpts.classList.add('hidden');
                 quizBuilder.classList.remove('hidden');
-                if (document.getElementById('quest-quiz-questions-container').children.length === 0) {
+                let qContainer = document.getElementById('quest-quiz-questions-container');
+                if (qContainer && qContainer.children.length === 0) {
                     for (let i = 0; i < 10; i++) addQuestQuizQuestion();
                 }
             } else {
@@ -2161,6 +2185,7 @@
 
         function addQuestQuizQuestion() {
             let container = document.getElementById('quest-quiz-questions-container');
+            if (!container) return;
             let qIdx = container.children.length;
             if (qIdx >= 10) return alert("Maximum 10 questions pour ce quiz !");
             let div = document.createElement('div');
@@ -2186,10 +2211,16 @@
 
         async function adminCreateQuestOrQuiz(e) {
             e.preventDefault();
-            let type = document.getElementById('quest-type').value;
-            let title = document.getElementById('quest-title').value.trim();
-            let description = document.getElementById('quest-desc').value.trim();
-            let points = parseFloat(document.getElementById('quest-pts').value) || 0;
+            let typeEl = document.getElementById('quest-type');
+            let titleEl = document.getElementById('quest-title');
+            let descEl = document.getElementById('quest-desc');
+            let ptsEl = document.getElementById('quest-pts');
+            if (!typeEl || !titleEl || !descEl || !ptsEl) return;
+
+            let type = typeEl.value;
+            let title = titleEl.value.trim();
+            let description = descEl.value.trim();
+            let points = parseFloat(ptsEl.value) || 0;
 
             let newQuest = {
                 id: 'quest_' + Date.now(),
@@ -2200,7 +2231,8 @@
             };
 
             if (type === 'task') {
-                newQuest.requireLink = document.getElementById('quest-require-link').checked;
+                let reqLinkEl = document.getElementById('quest-require-link');
+                newQuest.requireLink = reqLinkEl ? reqLinkEl.checked : false;
             } else {
                 let blocks = document.querySelectorAll('.qq-block');
                 let questions = [];
@@ -2226,6 +2258,7 @@
             await DB.set('quests', quests);
             pushGlobalNotification("🎯 Nouveau Défi / Quiz", `Un nouveau défi "${title}" a été publié !`);
             showToast("Publié avec succès !", "");
+            render();
         }
 
         async function adminValidateQuestSubmission(subId, isApproved) {
@@ -2237,7 +2270,8 @@
             sub.validated = true;
 
             if (isApproved) {
-                let awarded = parseFloat(document.getElementById(`award-pts-${subId}`).value) || sub.defaultPoints || 10;
+                let awardInp = document.getElementById(`award-pts-${subId}`);
+                let awarded = awardInp ? (parseFloat(awardInp.value) || sub.defaultPoints || 10) : (sub.defaultPoints || 10);
                 sub.awardedPoints = awarded;
 
                 let scores = DB.get('user_scores') || {};
@@ -2254,10 +2288,12 @@
             submissions[subIdx] = sub;
             await DB.set('quest_submissions', submissions);
             showToast("Validation enregistrée", "");
+            render();
         }
 
         function addCrosswordWordRow() {
             let container = document.getElementById('cw-words-container');
+            if (!container) return;
             let div = document.createElement('div');
             div.className = "grid grid-cols-2 gap-2 cw-word-row";
             div.innerHTML = `
@@ -2269,14 +2305,20 @@
 
         async function adminCreateCrosswordGrid(e) {
             e.preventDefault();
-            let title = document.getElementById('cw-grid-title').value.trim();
+            let titleEl = document.getElementById('cw-grid-title');
+            if (!titleEl) return;
+            let title = titleEl.value.trim();
             let rows = document.querySelectorAll('.cw-word-row');
             let words = [];
 
             rows.forEach(r => {
-                let clue = r.querySelector('.cw-clue').value.trim();
-                let answer = r.querySelector('.cw-ans').value.trim();
-                if (clue && answer) words.push({ clue, answer });
+                let clueEl = r.querySelector('.cw-clue');
+                let ansEl = r.querySelector('.cw-ans');
+                if (clueEl && ansEl) {
+                    let clue = clueEl.value.trim();
+                    let answer = ansEl.value.trim();
+                    if (clue && answer) words.push({ clue, answer });
+                }
             });
 
             if (words.length < 10) {
@@ -2289,19 +2331,31 @@
             await DB.set('crosswords_grids', grids);
             pushGlobalNotification("🧩 Nouvelle grille Mots Croisés", `La grille hebdomadaire "${title}" a été publiée !`);
             showToast("Grille publiée !", "La grille de mots croisés est en ligne.");
+            render();
         }
 
         async function adminIssueSanction(e) {
             e.preventDefault();
-            let username = document.getElementById('sanc-user').value;
-            let type = document.getElementById('sanc-type-select').value;
-            let reason = document.getElementById('sanc-reason').value.trim();
-            let ptsDeducted = parseFloat(document.getElementById('sanc-pts').value) || 0;
+            let uEl = document.getElementById('sanc-user');
+            let tEl = document.getElementById('sanc-type-select');
+            let rEl = document.getElementById('sanc-reason');
+            let pEl = document.getElementById('sanc-pts');
+            if (!uEl || !tEl || !rEl) return;
 
-            let blockChat = document.getElementById('block-chat').checked;
-            let blockMails = document.getElementById('block-mails').checked;
-            let blockQuests = document.getElementById('block-quests').checked;
-            let blockGames = document.getElementById('block-games').checked;
+            let username = uEl.value;
+            let type = tEl.value;
+            let reason = rEl.value.trim();
+            let ptsDeducted = pEl ? (parseFloat(pEl.value) || 0) : 0;
+
+            let bc = document.getElementById('block-chat');
+            let bm = document.getElementById('block-mails');
+            let bq = document.getElementById('block-quests');
+            let bg = document.getElementById('block-games');
+
+            let blockChat = bc ? bc.checked : false;
+            let blockMails = bm ? bm.checked : false;
+            let blockQuests = bq ? bq.checked : false;
+            let blockGames = bg ? bg.checked : false;
 
             let sanctions = DB.get('user_sanctions') || {};
             if (!sanctions[username]) sanctions[username] = [];
@@ -2326,10 +2380,12 @@
 
             pushGlobalNotification("⚠️ Sanction QG attribuée", `Une sanction (${type}) vous a été attribuée par le Délégué.`, username);
             showToast("Sanction appliquée", "L'élève a été notifié et les accès ont été mis à jour.");
+            render();
         }
 
         async function adminAddPoints(username, multiplier) {
             let valInput = document.getElementById(`pts-val-${username}`);
+            if (!valInput) return;
             let amount = parseFloat(valInput.value) || 0;
             if (amount <= 0) return alert("Veuillez saisir un nombre de points valide !");
 
@@ -2340,20 +2396,26 @@
             await DB.set('user_scores', scores);
             valInput.value = '';
             showToast("Points mis à jour !", `Le score de ${username} a été modifié.`);
+            render();
         }
 
         async function adminSaveAppDownload(e) {
             e.preventDefault();
-            let link = document.getElementById('app-dl-file').value.trim();
-            let guide = document.getElementById('app-dl-guide').value.trim();
+            let fileEl = document.getElementById('app-dl-file');
+            let guideEl = document.getElementById('app-dl-guide');
+            if (!fileEl || !guideEl) return;
+            let link = fileEl.value.trim();
+            let guide = guideEl.value.trim();
 
             await DB.set('app_download_info', { link, guide });
             pushGlobalNotification("📱 Application mise à jour", "Le fichier et la procédure d'installation de l'application sont disponibles.");
             showToast("Mise à jour enregistrée", "Le lien de téléchargement et la procédure sont en ligne.");
+            render();
         }
 
         function addAdminQuizQuestionRow() {
             let container = document.getElementById('quiz-questions-builder');
+            if (!container) return;
             let qCount = container.children.length + 1;
             let div = document.createElement('div');
             div.className = "p-4 bg-stone-900/80 rounded-2xl border space-y-3 quiz-q-block";
@@ -2381,8 +2443,11 @@
 
         async function adminCreateQuiz(e) {
             e.preventDefault();
-            let title = document.getElementById('quiz-title').value.trim();
-            let subject = document.getElementById('quiz-subject').value.trim();
+            let tEl = document.getElementById('quiz-title');
+            let sEl = document.getElementById('quiz-subject');
+            if (!tEl || !sEl) return;
+            let title = tEl.value.trim();
+            let subject = sEl.value.trim();
             let blocks = document.querySelectorAll('.quiz-q-block');
             let questions = [];
 
@@ -2416,6 +2481,7 @@
             await DB.set('quizzes', quizzes);
             pushGlobalNotification("📝 Nouveau Quiz", `Un nouveau quiz "${title}" (${subject}) a été publié par le Délégué !`);
             showToast("Quiz publié !", "Le quiz est désormais accessible dans l'onglet Quiz.");
+            render();
         }
 
         function exportExcelData(type) {
@@ -2475,7 +2541,9 @@
         }
 
         function exportSingleAccountExcel() {
-            let uname = document.getElementById('export-username-select').value;
+            let selectEl = document.getElementById('export-username-select');
+            if (!selectEl) return;
+            let uname = selectEl.value;
             let users = DB.get('users') || [];
             let u = users.find(x => x.username === uname);
             if (!u) return;
@@ -2504,10 +2572,16 @@
 
         async function adminCreatePoll(e) {
             e.preventDefault();
-            let question = document.getElementById('poll-q').value.trim();
-            let opt1 = document.getElementById('poll-opt1').value.trim();
-            let opt2 = document.getElementById('poll-opt2').value.trim();
-            let expiresAt = document.getElementById('poll-exp').value;
+            let qEl = document.getElementById('poll-q');
+            let opt1El = document.getElementById('poll-opt1');
+            let opt2El = document.getElementById('poll-opt2');
+            let expEl = document.getElementById('poll-exp');
+            if (!qEl || !opt1El || !opt2El || !expEl) return;
+
+            let question = qEl.value.trim();
+            let opt1 = opt1El.value.trim();
+            let opt2 = opt2El.value.trim();
+            let expiresAt = expEl.value;
 
             let polls = DB.get('polls') || [];
             polls.unshift({
@@ -2519,32 +2593,43 @@
             await DB.set('polls', polls);
             pushGlobalNotification("📊 Nouveau sondage", `Un nouveau sondage a été lancé par le Délégué : "${question}"`);
             showToast("Sondage lancé !", "Le sondage est en ligne pour les élèves.");
+            render();
         }
 
         async function adminAddFormationLink(e) {
             e.preventDefault();
-            let title = document.getElementById('form-title').value.trim();
-            let description = document.getElementById('form-desc').value.trim();
-            let link = document.getElementById('form-link').value.trim();
+            let tEl = document.getElementById('form-title');
+            let dEl = document.getElementById('form-desc');
+            let lEl = document.getElementById('form-link');
+            if (!tEl || !dEl) return;
+            let title = tEl.value.trim();
+            let description = dEl.value.trim();
+            let link = lEl ? lEl.value.trim() : '';
             let formations = DB.get('formations') || [];
             formations.unshift({ title, description, link });
             await DB.set('formations', formations);
             pushGlobalNotification("🎓 Nouvelle formation", `Une formation post-bac a été ajoutée par le Délégué : "${title}"`);
             showToast("Formation publiée !", "");
+            render();
         }
 
         async function adminSaveQRCode(e) {
             e.preventDefault();
-            let qrData = document.getElementById('qr-url').value.trim();
+            let qrEl = document.getElementById('qr-url');
+            if (!qrEl) return;
+            let qrData = qrEl.value.trim();
             if (qrData) {
                 await DB.set('home_qr_image', qrData);
                 pushGlobalNotification("📸 QR Code mis à jour", "Le QR Code officiel de la classe a été actualisé.");
                 showToast("QR Code mis à jour !", "");
+                render();
             }
         }
 
         async function saveAppreciation(username, tKey) {
-            let text = document.getElementById(`app-${username}-${tKey}`).value;
+            let textEl = document.getElementById(`app-${username}-${tKey}`);
+            if (!textEl) return;
+            let text = textEl.value;
             let apps = DB.get('appreciations') || {};
             if (!apps[username]) apps[username] = {};
             if (!apps[username][tKey]) apps[username][tKey] = { text: '', published: false };
@@ -2583,43 +2668,56 @@
 
         async function adminAddExamLink(e) {
             e.preventDefault();
-            let title = document.getElementById('ex-title').value;
-            let fileData = document.getElementById('ex-url').value.trim();
+            let tEl = document.getElementById('ex-title');
+            let uEl = document.getElementById('ex-url');
+            if (!tEl || !uEl) return;
+            let title = tEl.value;
+            let fileData = uEl.value.trim();
             let subjects = DB.get('exam_subjects') || [];
             subjects.push({ title, link: fileData, fileData, fileType: 'url' });
             await DB.set('exam_subjects', subjects);
             pushGlobalNotification("📚 Sujet d'examen ajouté", `Un nouveau sujet/exercice a été publié par le Délégué : "${title}"`);
             showToast("Sujet Bac publié !", "");
+            render();
         }
 
         async function adminAddRevisionLink(e) {
             e.preventDefault();
-            let title = document.getElementById('rev-title').value;
-            let fileData = document.getElementById('rev-url').value.trim();
+            let tEl = document.getElementById('rev-title');
+            let uEl = document.getElementById('rev-url');
+            if (!tEl || !uEl) return;
+            let title = tEl.value;
+            let fileData = uEl.value.trim();
             let sheets = DB.get('revision_sheets') || [];
             sheets.push({ title, link: fileData, fileData, fileType: 'url' });
             await DB.set('revision_sheets', sheets);
             pushGlobalNotification("📖 Nouvelle fiche de révision", `Une nouvelle fiche de révision a été ajoutée par le Délégué : "${title}"`);
             showToast("Fiche publiée !", "");
+            render();
         }
 
         async function adminCreateUser(e) {
             e.preventDefault();
-            let username = document.getElementById('uc-user').value.trim();
-            let password = document.getElementById('uc-pass').value.trim();
-            let role = document.getElementById('uc-role').value;
+            let uEl = document.getElementById('uc-user');
+            let pEl = document.getElementById('uc-pass');
+            let rEl = document.getElementById('uc-role');
+            if (!uEl || !pEl || !rEl) return;
+            let username = uEl.value.trim();
+            let password = pEl.value.trim();
+            let role = rEl.value;
             let users = DB.get('users') || [];
             if (users.some(u => u.username === username)) return alert("Identifiant existant");
             users.push({ username, password, role, status: 'active', mustChangePass: true, realName: username, pseudo: username });
             await DB.set('users', users);
             pushGlobalNotification("👤 Nouveau compte créé", `Un nouveau compte (${username}) a été créé par l'administrateur.`, username);
             showToast("Compte créé !", "");
+            render();
         }
 
         async function adminChangeRole(username, newRole) {
             let users = DB.get('users') || [];
             let u = users.find(x => x.username === username);
-            if (u) { u.role = newRole; await DB.set('users', users); showToast("Rôle mis à jour", ""); }
+            if (u) { u.role = newRole; await DB.set('users', users); showToast("Rôle mis à jour", ""); render(); }
         }
 
         async function adminResetPassword(username) {
@@ -2627,7 +2725,7 @@
             if (!newPass) return;
             let users = DB.get('users') || [];
             let u = users.find(x => x.username === username);
-            if (u) { u.password = newPass; u.mustChangePass = true; await DB.set('users', users); showToast("MDP réinitialisé", ""); }
+            if (u) { u.password = newPass; u.mustChangePass = true; await DB.set('users', users); showToast("MDP réinitialisé", ""); render(); }
         }
 
         async function adminToggleSuspend(username) {
@@ -2638,8 +2736,11 @@
 
         async function handleLogin(e) {
             e.preventDefault();
-            let u = document.getElementById('l-user').value.trim();
-            let p = document.getElementById('l-pass').value.trim();
+            let uEl = document.getElementById('l-user');
+            let pEl = document.getElementById('l-pass');
+            if (!uEl || !pEl) return;
+            let u = uEl.value.trim();
+            let p = pEl.value.trim();
             let user = (DB.get('users') || []).find(x => x.username === u && x.password === p);
             if (user) {
                 sessionStorage.setItem('leqg_current_user', JSON.stringify(user));
@@ -2652,11 +2753,15 @@
         async function saveSetup(e) {
             e.preventDefault();
             let user = getCurrentUser(), users = DB.get('users') || [], idx = users.findIndex(u => u.username === user.username);
-            if (idx !== -1) {
-                users[idx].realName = document.getElementById('s-realname').value;
-                users[idx].password = document.getElementById('s-pass').value;
-                users[idx].birthDate = document.getElementById('s-bdate').value;
-                users[idx].email = document.getElementById('s-email').value;
+            let rnEl = document.getElementById('s-realname');
+            let pEl = document.getElementById('s-pass');
+            let bdEl = document.getElementById('s-bdate');
+            let emEl = document.getElementById('s-email');
+            if (idx !== -1 && rnEl && pEl && bdEl) {
+                users[idx].realName = rnEl.value;
+                users[idx].password = pEl.value;
+                users[idx].birthDate = bdEl.value;
+                users[idx].email = emEl ? emEl.value : '';
                 users[idx].mustChangePass = false;
                 await DB.set('users', users);
                 sessionStorage.setItem('leqg_current_user', JSON.stringify(users[idx]));
