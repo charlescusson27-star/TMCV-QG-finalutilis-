@@ -66,6 +66,32 @@
         </div>
     </div>
 
+    <!-- Modal Édition Sanction Admin -->
+    <div id="edit-sanction-modal" class="hidden fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
+        <div class="w-full max-w-md dyn-card border rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
+            <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
+                <h3 class="font-black text-base text-amber-400"><i class="fa-solid fa-pen mr-2"></i>Modifier la Sanction</h3>
+                <button onclick="toggleModal('edit-sanction-modal', false)" class="text-amber-200/70 hover:text-white p-2"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <form onsubmit="saveEditedSanction(event)" class="space-y-3">
+                <input type="hidden" id="edit-sanc-idx">
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Type de sanction :</label>
+                    <input type="text" id="edit-sanc-type" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                </div>
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Motif :</label>
+                    <textarea id="edit-sanc-reason" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-20 resize-none"></textarea>
+                </div>
+                <div>
+                    <label class="block font-bold text-amber-200 mb-1">Points déduits :</label>
+                    <input type="number" step="any" id="edit-sanc-pts" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                </div>
+                <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Enregistrer les modifications</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Modal Procédure de Téléchargement App -->
     <div id="download-modal" class="hidden fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
         <div class="w-full max-w-2xl dyn-card border rounded-3xl p-6 shadow-2xl space-y-4 text-xs">
@@ -360,7 +386,7 @@
             let notifs = DB.get('app_notifications') || [];
             let updated = notifs.filter(n => n.id !== notifId);
             await DB.set('app_notifications', updated);
-            showToast("Notification supprimée", "");
+            showToast("Notification bien supprimée", "");
             render();
         }
 
@@ -1416,7 +1442,7 @@
                         </div>
                     `).join('')}
                 </div>
-            </div>`;
+            `;
         }
 
         function addFlashcardRow() {
@@ -1532,9 +1558,14 @@
         function renderLeaderboardSection(u) {
             let scores = DB.get('user_scores') || {};
             let users = DB.get('users') || [];
-            let sorted = users.map(user => ({ pseudo: user.pseudo || user.username, score: parseFloat(scores[user.username] || 0).toFixed(2) })).sort((a, b) => b.score - a.score);
+            // Exclusion stricte de l'administrateur (Charlesadmin ou rôle admin) des classements (classe, mensuel, annuel)
+            let sorted = users
+                .filter(user => user.role !== 'admin' && user.username !== 'Charlesadmin')
+                .map(user => ({ pseudo: user.pseudo || user.username, score: parseFloat(scores[user.username] || 0).toFixed(2) }))
+                .sort((a, b) => b.score - a.score);
+
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
-                <div class="dyn-card border p-6 rounded-3xl text-center"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-trophy mr-2"></i>Classement Classe</h2></div>
+                <div class="dyn-card border p-6 rounded-3xl text-center"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-trophy mr-2"></i>Classement Classe (Hors Admin)</h2></div>
                 <div class="space-y-2">${sorted.map((s, idx) => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="font-bold text-amber-400">#${idx+1} ${s.pseudo}</span><span class="font-bold text-white">${s.score} pts</span></div>`).join('')}</div>
             </div>`;
         }
@@ -1874,53 +1905,87 @@
             }
 
             if (state.adminSub === 'sanctions') {
+                let allSanctions = DB.get('user_sanctions') || {};
+                let hasAnySanctions = Object.keys(allSanctions).some(k => allSanctions[k] && allSanctions[k].length > 0);
+
                 return `
-                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Attribution d'une Sanction & Restrictions QG</h3>
-                        <form onsubmit="adminIssueSanction(event)" class="p-4 bg-stone-900/80 rounded-2xl border space-y-3">
-                            <div>
-                                <label class="block font-bold text-amber-200 mb-1">Sélectionner l'élève :</label>
-                                <select id="sanc-user" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
-                                    <option value="">Choisir un élève...</option>
-                                    ${users.filter(u => u.role === 'student').map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.username})</option>`).join('')}
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="block font-bold text-amber-200 mb-1">Action / Sanction QG Prédéfinie :</label>
-                                <select id="sanc-type-select" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-300 font-bold">
-                                    <option value="Avertissement QG">Avertissement comportemental QG</option>
-                                    <option value="Retrait de Points">Retrait de points uniquement</option>
-                                    <option value="Restriction Messagerie / Tchat">Restriction Messagerie / Tchat</option>
-                                    <option value="Restriction Mails & Support">Restriction Mails & Support</option>
-                                    <option value="Interdiction Quêtes & Défis">Interdiction temporaire Quêtes & Défis</option>
-                                    <option value="Blocage Mots Croisés">Blocage Mots Croisés</option>
-                                    <option value="Suspension Temporaire Compte">Suspension Globale du Compte QG</option>
-                                </select>
-                            </div>
-
-                            <div>
-                                <label class="block font-bold text-amber-200 mb-1">Nombre de points à retirer au score (optionnel) :</label>
-                                <input type="number" step="any" id="sanc-pts" placeholder="Ex: 10 ou 17.90" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
-                            </div>
-
-                            <div class="p-3 bg-stone-950 rounded-xl border border-amber-900/40 space-y-2">
-                                <label class="block font-bold text-amber-300 text-xs">Blocages d'accès personnalisés :</label>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-amber-100 font-medium">
-                                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-chat" class="accent-amber-500 w-4 h-4"> Bloquer le Tchat / Messagerie</label>
-                                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-mails" class="accent-amber-500 w-4 h-4"> Bloquer les Mails / Support</label>
-                                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-quests" class="accent-amber-500 w-4 h-4"> Bloquer Quêtes & Défis</label>
-                                    <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-games" class="accent-amber-500 w-4 h-4"> Bloquer Mots Croisés</label>
+                    <div class="space-y-6">
+                        <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                            <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Attribution d'une Sanction & Restrictions QG</h3>
+                            <form onsubmit="adminIssueSanction(event)" class="p-4 bg-stone-900/80 rounded-2xl border space-y-3">
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Sélectionner l'élève :</label>
+                                    <select id="sanc-user" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                                        <option value="">Choisir un élève...</option>
+                                        ${users.filter(u => u.role === 'student').map(u => `<option value="${u.username}">${u.pseudo || u.username} (${u.username})</option>`).join('')}
+                                    </select>
                                 </div>
-                            </div>
 
-                            <div>
-                                <label class="block font-bold text-amber-200 mb-1">Motif explicatif de la sanction :</label>
-                                <textarea id="sanc-reason" required placeholder="Saisissez le motif précis..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 h-20 resize-none"></textarea>
-                            </div>
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Action / Sanction QG Prédéfinie :</label>
+                                    <select id="sanc-type-select" required class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-300 font-bold">
+                                        <option value="Avertissement QG">Avertissement comportemental QG</option>
+                                        <option value="Retrait de Points">Retrait de points uniquement</option>
+                                        <option value="Restriction Messagerie / Tchat">Restriction Messagerie / Tchat</option>
+                                        <option value="Restriction Mails & Support">Restriction Mails & Support</option>
+                                        <option value="Interdiction Quêtes & Défis">Interdiction temporaire Quêtes & Défis</option>
+                                        <option value="Blocage Mots Croisés">Blocage Mots Croisés</option>
+                                        <option value="Suspension Temporaire Compte">Suspension Globale du Compte QG</option>
+                                    </select>
+                                </div>
 
-                            <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-xs">Appliquer la Sanction QG</button>
-                        </form>
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Nombre de points à retirer au score (optionnel) :</label>
+                                    <input type="number" step="any" id="sanc-pts" placeholder="Ex: 10 ou 17.90" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                                </div>
+
+                                <div class="p-3 bg-stone-950 rounded-xl border border-amber-900/40 space-y-2">
+                                    <label class="block font-bold text-amber-300 text-xs">Blocages d'accès personnalisés :</label>
+                                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-amber-100 font-medium">
+                                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-chat" class="accent-amber-500 w-4 h-4"> Bloquer le Tchat / Messagerie</label>
+                                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-mails" class="accent-amber-500 w-4 h-4"> Bloquer les Mails / Support</label>
+                                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-quests" class="accent-amber-500 w-4 h-4"> Bloquer Quêtes & Défis</label>
+                                        <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" id="block-games" class="accent-amber-500 w-4 h-4"> Bloquer Mots Croisés</label>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Motif explicatif de la sanction :</label>
+                                    <textarea id="sanc-reason" required placeholder="Saisissez le motif précis..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 h-20 resize-none"></textarea>
+                                </div>
+
+                                <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-xs">Appliquer la Sanction QG</button>
+                            </form>
+                        </div>
+
+                        <!-- Panel Sanctions Prises -->
+                        <div class="dyn-card border p-6 rounded-3xl space-y-4">
+                            <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-list-check mr-2"></i>Sanctions Prises (Gestion & Suivi en temps réel)</h3>
+                            <div class="space-y-3">
+                                ${!hasAnySanctions ? '<p class="text-amber-200/50 text-center py-6">Aucune sanction attribuée pour le moment.</p>' : ''}
+                                ${Object.entries(allSanctions).map(([uname, sList]) => {
+                                    if (!sList || sList.length === 0) return '';
+                                    return sList.map((s, sIdx) => `
+                                        <div class="p-4 bg-stone-900 rounded-2xl border border-red-500/30 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                            <div class="space-y-1">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="font-black text-amber-400">Élève : ${uname}</span>
+                                                    <span class="px-2 py-0.5 bg-red-500/20 text-red-300 rounded font-bold text-[10px]">${s.type}</span>
+                                                    <span class="text-[10px] text-amber-200/50">${s.date}</span>
+                                                </div>
+                                                <p class="text-amber-100"><b>Motif :</b> ${s.reason}</p>
+                                                ${s.deductedPoints > 0 ? `<p class="text-red-400 font-bold text-[10px]">- ${s.deductedPoints} pts déduits</p>` : ''}
+                                            </div>
+                                            <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                                                <button onclick="openEditSanctionModal('${uname}', ${sIdx})" class="px-3 py-1.5 bg-amber-600 text-white font-bold rounded-xl">Modifier</button>
+                                                <button onclick="cancelSanction('${uname}', ${sIdx})" class="px-3 py-1.5 bg-stone-800 text-amber-200 font-bold rounded-xl">Annuler</button>
+                                                <button onclick="deleteSanction('${uname}', ${sIdx})" class="px-3 py-1.5 bg-red-900/60 text-red-200 font-bold rounded-xl">Supprimer</button>
+                                            </div>
+                                        </div>
+                                    `).join('');
+                                }).join('')}
+                            </div>
+                        </div>
                     </div>
                 `;
             }
@@ -2632,6 +2697,62 @@
             pushGlobalNotification("⚠️ Sanction QG attribuée", `Une sanction (${type}) vous a été attribuée par le Délégué.`, username);
             showToast("Sanction appliquée", "L'élève a été notifié et les accès ont été mis à jour.");
             render();
+        }
+
+        function openEditSanctionModal(username, sIdx) {
+            let sanctions = DB.get('user_sanctions') || {};
+            let list = sanctions[username] || [];
+            let s = list[sIdx];
+            if (!s) return;
+
+            document.getElementById('edit-sanc-idx').value = username + '___' + sIdx;
+            document.getElementById('edit-sanc-type').value = s.type;
+            document.getElementById('edit-sanc-reason').value = s.reason;
+            document.getElementById('edit-sanc-pts').value = s.deductedPoints || 0;
+            toggleModal('edit-sanction-modal', true);
+        }
+
+        async function saveEditedSanction(e) {
+            e.preventDefault();
+            let key = document.getElementById('edit-sanc-idx').value;
+            let [username, sIdxStr] = key.split('___');
+            let sIdx = parseInt(sIdxStr);
+
+            let type = document.getElementById('edit-sanc-type').value.trim();
+            let reason = document.getElementById('edit-sanc-reason').value.trim();
+            let pts = parseFloat(document.getElementById('edit-sanc-pts').value) || 0;
+
+            let sanctions = DB.get('user_sanctions') || {};
+            if (sanctions[username] && sanctions[username][sIdx]) {
+                sanctions[username][sIdx].type = type;
+                sanctions[username][sIdx].reason = reason;
+                sanctions[username][sIdx].deductedPoints = pts;
+                await DB.set('user_sanctions', sanctions);
+                toggleModal('edit-sanction-modal', false);
+                showToast("Sanction modifiée", "Les modifications ont bien été enregistrées.");
+                render();
+            }
+        }
+
+        async function cancelSanction(username, sIdx) {
+            let sanctions = DB.get('user_sanctions') || {};
+            if (sanctions[username] && sanctions[username][sIdx]) {
+                sanctions[username][sIdx].type = "[Annulée] " + sanctions[username][sIdx].type;
+                await DB.set('user_sanctions', sanctions);
+                showToast("Sanction annulée", "La sanction a été marquée comme annulée.");
+                render();
+            }
+        }
+
+        async function deleteSanction(username, sIdx) {
+            if (!confirm("Voulez-vous supprimer définitivement cette sanction ?")) return;
+            let sanctions = DB.get('user_sanctions') || {};
+            if (sanctions[username]) {
+                sanctions[username].splice(sIdx, 1);
+                await DB.set('user_sanctions', sanctions);
+                showToast("Sanction supprimée", "La sanction a été retirée de la base.");
+                render();
+            }
         }
 
         async function adminAddPoints(username, multiplier) {
