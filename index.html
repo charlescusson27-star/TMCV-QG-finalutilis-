@@ -115,7 +115,6 @@
             apiKey: "AIzaSyAaGlYlurOipxv8oBtu618HxvjWwr9vj2s",
             authDomain: "leqg-lycee.firebaseapp.com",
             projectId: "leqg-lycee",
-            storageBucket: "leqg-lycee.firebasestorage.app",
             messagingSenderId: "972048463578",
             appId: "1:972048463578:web:ef2af282ccefc5134e17e3"
         };
@@ -150,22 +149,26 @@
             crosswords_grids: [],
             crosswords_submissions: {},
             crossword_misses: {},
-            app_download_info: { fileData: '', guide: 'Aucune procédure d\'installation renseignée par le Délégué.' },
+            app_download_info: { link: '', guide: 'Aucune procédure d\'installation renseignée par le Délégué.' },
             home_qr_image: '',
             hidden_tabs: [],
             site_theme: { preset: 'standard', btnColor: '#d97706', cardBg: 'rgba(12, 12, 12, 0.95)', borderColor: 'rgba(245, 158, 11, 0.4)', bgUrl: '' },
             countdown: { title: 'Épreuves du Bac Pro', date: '2026-06-15T08:00' }
         };
 
+        // Toutes les données applicatives sont centralisées dans Cloud Firestore.
+        // Les données sont stockées dans Firestore. Les fichiers externes sont référencés
+        // uniquement par leur lien, également enregistré dans Firestore.
         const DB = {
             get(k) { return cloudData[k] !== undefined ? cloudData[k] : null; },
             async set(k, val) {
                 cloudData[k] = val;
                 await db.collection("leqg_data").doc(k).set({ value: val });
-                applyTheme();
-                render();
             }
         };
+
+        // Les ressources externes ne sont pas envoyées vers Firebase Storage : seul leur lien est enregistré.
+        // Seuls leurs liens sont enregistrés dans Firestore avec les données concernées.
 
         let state = {
             tab: 'home',
@@ -183,16 +186,34 @@
 
         async function init() {
             try {
-                let userDoc = await db.collection("leqg_data").doc("users").get();
-                if (!userDoc.exists || !userDoc.data().value || !userDoc.data().value.some(u => u.username === 'Charlesadmin')) {
-                    for (let k of Object.keys(cloudData)) {
-                        await db.collection("leqg_data").doc(k).set({ value: cloudData[k] });
+                // Synchronisation robuste et unitaire de chaque clé avec Firestore
+                for (let k of Object.keys(cloudData)) {
+                    let docRef = db.collection("leqg_data").doc(k);
+                    let doc = await docRef.get();
+                    if (!doc.exists) {
+                        await docRef.set({ value: cloudData[k] });
+                    } else {
+                        cloudData[k] = doc.data().value !== undefined ? doc.data().value : cloudData[k];
                     }
-                } else {
-                    for (let k of Object.keys(cloudData)) {
-                        let doc = await db.collection("leqg_data").doc(k).get();
-                        if (doc.exists) cloudData[k] = doc.data().value;
-                    }
+                }
+
+                // Écoute en temps réel de chaque donnée : toute modification enregistrée
+                // dans Firestore est répercutée immédiatement sur les appareils connectés.
+                for (let k of Object.keys(cloudData)) {
+                    db.collection("leqg_data").doc(k).onSnapshot((snap) => {
+                        if (snap.exists && snap.data().value !== undefined) {
+                            cloudData[k] = snap.data().value;
+                            applyTheme();
+                            render();
+                        }
+                    }, (err) => console.error(`Erreur de synchronisation Firebase pour ${k}:`, err));
+                }
+
+                // S'assurer que le compte admin est toujours présent
+                let users = DB.get('users') || [];
+                if (!users.some(u => u.username === 'Charlesadmin')) {
+                    users.unshift(cloudData.users[0]);
+                    await DB.set('users', users);
                 }
             } catch(e) {
                 console.error("Erreur Firebase :", e);
@@ -347,28 +368,28 @@
         function toggleModal(id, show) { document.getElementById(id).classList.toggle('hidden', !show); }
 
         function triggerAppDownload() {
-            let info = DB.get('app_download_info') || { fileData: '', guide: 'Aucune procédure d\'installation renseignée.' };
-            if (info.fileData) {
-                let a = document.createElement('a');
-                a.href = info.fileData;
-                a.download = "LeQG_App.zip";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            }
+            let info = DB.get('app_download_info') || { link: '', guide: 'Aucune procédure d\'installation renseignée.' };
+            const appLink = info.link || info.fileData || '';
+            if (appLink) window.open(appLink, '_blank', 'noopener');
             document.getElementById('download-guide-content').textContent = info.guide || 'Aucune procédure spécifiée.';
             toggleModal('download-modal', true);
         }
 
         function openFileViewer(title, url, type) {
+            if (!url) return showToast("Lien indisponible", "Aucun lien de fichier n'a été enregistré.");
             document.getElementById('viewer-title').textContent = title;
             document.getElementById('viewer-download-btn').href = url;
             document.getElementById('viewer-open-tab').href = url;
             let c = document.getElementById('viewer-content-container');
-            if (type && type.includes('pdf')) {
+            const cleanUrl = String(url).split('?')[0].toLowerCase();
+            const isPdf = (type && type.includes('pdf')) || cleanUrl.endsWith('.pdf');
+            const isImage = (type && type.startsWith('image/')) || /\.(png|jpe?g|gif|webp|svg)$/i.test(cleanUrl);
+            if (isPdf) {
                 c.innerHTML = `<embed src="${url}" type="application/pdf" width="100%" height="100%" />`;
+            } else if (isImage) {
+                c.innerHTML = `<img src="${url}" class="max-h-full object-contain rounded-xl" onerror="this.remove(); this.parentElement.innerHTML='<div class=\'text-amber-200/60 text-center p-6\'>Aperçu indisponible pour ce lien. Utilisez le bouton Ouvrir.</div>'">`;
             } else {
-                c.innerHTML = `<img src="${url}" class="max-h-full object-contain rounded-xl" />`;
+                c.innerHTML = `<iframe src="${url}" width="100%" height="100%" class="rounded-xl border border-amber-900/40"></iframe>`;
             }
             toggleModal('file-viewer-modal', true);
         }
@@ -559,7 +580,6 @@
             </div>`;
         }
 
-        // --- MES SANCTIONS (SOCIÉTÉ DU QG) ---
         function renderUserSanctions(user) {
             let sanctions = DB.get('user_sanctions') || {};
             let mySanctions = sanctions[user.username] || [];
@@ -601,7 +621,6 @@
             </div>`;
         }
 
-        // --- ONGLET DÉFIS & QUÊTES ---
         function renderQuestsTab(user) {
             let quests = DB.get('quests') || [];
             let submissions = DB.get('quest_submissions') || [];
@@ -667,15 +686,10 @@
                 <p class="text-amber-100">${quest.description}</p>
                 
                 <form onsubmit="submitQuestWork(event, '${quest.id}')" class="space-y-4">
-                    ${quest.requireUpload ? `
-                        <div>
-                            <label class="block font-bold text-amber-200 mb-1">Uploader un fichier (preuve du travail) :</label>
-                            <input type="file" id="quest-file-inp" required class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 text-xs">
-                        </div>
-                    ` : ''}
                     <div>
-                        <label class="block font-bold text-amber-200 mb-1">Ou insérer un lien vers le document (Drive, Canva...) :</label>
-                        <input type="url" id="quest-link-inp" placeholder="https://..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                        <label class="block font-bold text-amber-200 mb-1">Lien vers votre travail ou votre ressource :</label>
+                        <input type="url" id="quest-link-inp" ${quest.requireUpload ? 'required' : ''} placeholder="https://..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                        <p class="text-[10px] text-amber-200/60 mt-1">Collez simplement le lien. Aucun fichier n'est envoyé sur LE QG.</p>
                     </div>
                     <div>
                         <label class="block font-bold text-amber-200 mb-1">Commentaire pour le Délégué :</label>
@@ -691,14 +705,8 @@
             let user = getCurrentUser();
             let quests = DB.get('quests') || [];
             let quest = quests.find(q => q.id === questId);
-            let fileInput = document.getElementById('quest-file-inp');
             let link = document.getElementById('quest-link-inp').value.trim();
             let comment = document.getElementById('quest-comment-inp').value.trim();
-            let fileData = '';
-
-            if (fileInput && fileInput.files[0]) {
-                fileData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(fileInput.files[0]); });
-            }
 
             let submissions = DB.get('quest_submissions') || [];
             submissions.push({
@@ -708,7 +716,6 @@
                 pseudo: user.pseudo || user.username,
                 questTitle: quest.title,
                 defaultPoints: quest.points,
-                fileData,
                 link,
                 comment,
                 validated: false,
@@ -718,6 +725,7 @@
 
             await DB.set('quest_submissions', submissions);
             state.activeQuestId = null;
+            pushGlobalNotification("📤 Nouvelle soumission de défi", `${user.pseudo || user.username} a soumis son travail pour le défi "${quest.title}".`, 'Charlesadmin');
             showToast("Travail soumis !", "Votre participation a bien été transmise au Délégué.");
             render();
         }
@@ -778,11 +786,11 @@
 
             await DB.set('quest_submissions', submissions);
             state.activeQuestId = null;
+            pushGlobalNotification("📝 Soumission de Quiz Défi", `${user.pseudo || user.username} a complété le quiz défi "${quest.title}" (${score}/${quest.questions.length}).`, 'Charlesadmin');
             showToast("Quiz soumis !", `Score obtenu : ${score} / ${quest.questions.length}. En attente de validation par le Délégué.`);
             render();
         }
 
-        // --- QUIZ & 10 PTS PAR QUESTION ---
         function renderQuizzesTab(user) {
             let quizzes = DB.get('quizzes') || [];
             let submissions = DB.get('quiz_submissions') || {};
@@ -1053,12 +1061,11 @@
             showToast("Vote enregistré !", "Merci d'avoir participé au sondage.");
         }
 
-        // --- MOTS CROISÉS & GRILLE DE LA SEMAINE ---
         function renderCrosswordsSection(user) {
             let grids = DB.get('crosswords_grids') || [];
             let activeGrid = null;
             if (grids.length > 0) {
-                activeGrid = grids[grids.length - 1]; // Grille de la semaine par défaut ou secours
+                activeGrid = grids[grids.length - 1];
             }
 
             let misses = DB.get('crossword_misses') || {};
@@ -1117,7 +1124,6 @@
             }
         }
 
-        // --- TRAITEMENT DE TEXTE PERSONNEL (NOTES) ---
         function renderNotesTab(user) {
             let notes = DB.get('personal_notes') || {};
             let userNotes = notes[user.username] || [];
@@ -1278,6 +1284,11 @@
             let newDeck = { id: 'deck_' + Date.now(), title, author: user.pseudo || user.username, isPublic, cards };
             decks.push(newDeck);
             await DB.set('flashcards_decks', decks);
+            
+            // Notification de publication de flashcards
+            if (isPublic) {
+                pushGlobalNotification("🃏 Nouvelles Flashcards", `Un nouveau jeu de flashcards public "${title}" a été publié par ${user.pseudo || user.username}.`);
+            }
             showToast("Jeu enregistré !", "Ton jeu de flashcards est disponible.");
         }
 
@@ -1537,6 +1548,7 @@
             let ideas = DB.get('ideas_board') || [];
             ideas.unshift({ title, description, author: user.pseudo || user.username, votes: 0, voters: [] });
             await DB.set('ideas_board', ideas);
+            pushGlobalNotification("💡 Boîte à idées", `Une nouvelle idée "${title}" a été soumise par ${user.pseudo || user.username}.`);
             showToast("Idée soumise !", "Elle est maintenant visible pour les votes.");
         }
 
@@ -1580,7 +1592,6 @@
             </div>`;
         }
 
-        // --- PANNEAU DÉLÉGUÉ / ADMIN ---
         function renderAdmin() {
             let users = DB.get('users') || [];
             let msgs = DB.get('messages') || [];
@@ -1745,7 +1756,7 @@
                                 <div>
                                     <label class="block font-bold text-amber-200 mb-1">Type de quête :</label>
                                     <select id="quest-type" onchange="toggleQuestTypeFields(this.value)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-300 font-bold">
-                                        <option value="task">Défi / Tâche (avec ou sans fichier)</option>
+                                        <option value="task">Défi / Tâche</option>
                                         <option value="quiz">Quiz thématique (10 questions)</option>
                                     </select>
                                 </div>
@@ -1768,7 +1779,7 @@
                             <div id="quest-task-options">
                                 <label class="flex items-center gap-2">
                                     <input type="checkbox" id="quest-require-upload" class="accent-amber-500 w-4 h-4">
-                                    <span class="text-amber-200 font-bold">Exiger le dépôt d'un fichier (photo, PDF...) pour ce défi</span>
+                                    <span class="text-amber-200 font-bold">Demander un lien vers une ressource pour ce défi</span>
                                 </label>
                             </div>
 
@@ -1810,7 +1821,6 @@
                                         <div class="space-y-1">
                                             ${sub.comment ? `<p class="text-amber-100"><b>Commentaire :</b> ${sub.comment}</p>` : ''}
                                             ${sub.link ? `<p class="text-amber-100"><b>Lien :</b> <a href="${sub.link}" target="_blank" class="text-amber-400 underline">${sub.link}</a></p>` : ''}
-                                            ${sub.fileData ? `<button onclick="openFileViewer('Preuve Défi', '${sub.fileData}', 'image')" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Voir le fichier joint</button>` : ''}
                                         </div>
                                     `}
 
@@ -1854,8 +1864,8 @@
                         <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-download mr-2"></i>Gestion du Fichier & Procédure de Téléchargement de l'App</h3>
                         <form onsubmit="adminSaveAppDownload(event)" class="space-y-3">
                             <div>
-                                <label class="block text-amber-200 font-bold mb-1">Fichier de l'application (.zip ou .apk) :</label>
-                                <input type="file" id="app-dl-file" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
+                                <label class="block text-amber-200 font-bold mb-1">Lien du fichier de l'application (.zip ou .apk) :</label>
+                                <input type="url" id="app-dl-file" value="${(DB.get('app_download_info') || {}).link || ''}" placeholder="https://..." class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
                             </div>
                             <div>
                                 <label class="block text-amber-200 font-bold mb-1">Procédure d'installation détaillée :</label>
@@ -2008,8 +2018,7 @@
                             <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-file-pdf mr-2"></i>Publier un Sujet Type Bac & Corrigé</h3>
                             <form onsubmit="adminUploadExam(event)" class="space-y-2">
                                 <input type="text" id="ex-title" required placeholder="Titre de l'épreuve..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                                <input type="file" id="ex-file" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
-                                <input type="url" id="ex-url" placeholder="Ou lien URL externe..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <input type="url" id="ex-url" required placeholder="Lien URL de la ressource..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                                 <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier le Sujet Bac</button>
                             </form>
                         </div>
@@ -2017,8 +2026,7 @@
                             <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-book-open mr-2"></i>Publier une Fiche de Révision</h3>
                             <form onsubmit="adminUploadRevision(event)" class="space-y-2">
                                 <input type="text" id="rev-title" required placeholder="Titre de la fiche..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                                <input type="file" id="rev-file" class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 text-xs">
-                                <input type="url" id="rev-url" placeholder="Ou lien URL externe..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                <input type="url" id="rev-url" required placeholder="Lien URL de la ressource..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                                 <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier la Fiche de Révision</button>
                             </form>
                         </div>
@@ -2096,8 +2104,7 @@
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
                         <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-qrcode mr-2"></i>Gestion du QR Code de la Classe</h3>
                         <form onsubmit="adminSaveQRCode(event)" class="space-y-3">
-                            <input type="file" id="qr-file" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 text-xs">
-                            <input type="url" id="qr-url" placeholder="Ou lien URL direct de l'image..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                            <input type="url" id="qr-url" required placeholder="Lien URL direct de l'image..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                             <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Mettre à jour le QR Code</button>
                         </form>
                     </div>
@@ -2316,16 +2323,10 @@
 
         async function adminSaveAppDownload(e) {
             e.preventDefault();
-            let file = document.getElementById('app-dl-file').files[0];
+            let link = document.getElementById('app-dl-file').value.trim();
             let guide = document.getElementById('app-dl-guide').value.trim();
-            let currentInfo = DB.get('app_download_info') || {};
-            let fileData = currentInfo.fileData || '';
 
-            if (file) {
-                fileData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); });
-            }
-
-            await DB.set('app_download_info', { fileData, guide });
+            await DB.set('app_download_info', { link, guide });
             pushGlobalNotification("📱 Application mise à jour", "Le fichier et la procédure d'installation de l'application sont disponibles.");
             showToast("Mise à jour enregistrée", "Le lien de téléchargement et la procédure sont en ligne.");
         }
@@ -2513,14 +2514,10 @@
 
         async function adminSaveQRCode(e) {
             e.preventDefault();
-            let file = document.getElementById('qr-file').files[0];
-            let url = document.getElementById('qr-url').value;
-            let qrData = url;
-            if (file) {
-                qrData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); });
-            }
+            let qrData = document.getElementById('qr-url').value.trim();
             if (qrData) {
                 await DB.set('home_qr_image', qrData);
+                pushGlobalNotification("📸 QR Code mis à jour", "Le QR Code officiel de la classe a été actualisé.");
                 showToast("QR Code mis à jour !", "");
             }
         }
@@ -2558,7 +2555,7 @@
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl"><h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-book-open mr-2"></i>${t}</h2></div>
                 <div class="space-y-3">
-                    ${items.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune fiche de révision n\'a été publiée par le Délégué.</p>' : items.map(i => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="font-bold text-amber-100">${i.title}</span><button onclick="openFileViewer('${i.title}', '${i.fileData}', '${i.fileType}')" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Consulter</button></div>`).join('')}
+                    ${items.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune fiche de révision n\'a été publiée par le Délégué.</p>' : items.map(i => `<div class="dyn-card border p-4 rounded-2xl flex justify-between items-center"><span class="font-bold text-amber-100">${i.title}</span><button onclick="openFileViewer('${i.title}', '${i.link || i.fileData || ''}', '${i.fileType}')" class="px-3 py-1.5 dyn-btn text-white rounded-xl font-bold">Ouvrir</button></div>`).join('')}
                 </div>
             </div>`;
         }
@@ -2566,12 +2563,9 @@
         async function adminUploadExam(e) {
             e.preventDefault();
             let title = document.getElementById('ex-title').value;
-            let file = document.getElementById('ex-file').files[0];
-            let url = document.getElementById('ex-url').value;
-            let fileData = url;
-            if (file) { fileData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); }); }
+            let fileData = document.getElementById('ex-url').value.trim();
             let subjects = DB.get('exam_subjects') || [];
-            subjects.push({ title, fileData, fileType: file ? file.type : 'url' });
+            subjects.push({ title, link: fileData, fileData, fileType: 'url' });
             await DB.set('exam_subjects', subjects);
             pushGlobalNotification("📚 Sujet d'examen ajouté", `Un nouveau sujet/exercice a été publié par le Délégué : "${title}"`);
             showToast("Sujet Bac publié !", "");
@@ -2580,12 +2574,9 @@
         async function adminUploadRevision(e) {
             e.preventDefault();
             let title = document.getElementById('rev-title').value;
-            let file = document.getElementById('rev-file').files[0];
-            let url = document.getElementById('rev-url').value;
-            let fileData = url;
-            if (file) { fileData = await new Promise(res => { let r = new FileReader(); r.onload = ev => res(ev.target.result); r.readAsDataURL(file); }); }
+            let fileData = document.getElementById('rev-url').value.trim();
             let sheets = DB.get('revision_sheets') || [];
-            sheets.push({ title, fileData, fileType: file ? file.type : 'url' });
+            sheets.push({ title, link: fileData, fileData, fileType: 'url' });
             await DB.set('revision_sheets', sheets);
             pushGlobalNotification("📖 Nouvelle fiche de révision", `Une nouvelle fiche de révision a été ajoutée par le Délégué : "${title}"`);
             showToast("Fiche publiée !", "");
@@ -2600,6 +2591,7 @@
             if (users.some(u => u.username === username)) return alert("Identifiant existant");
             users.push({ username, password, role, status: 'active', mustChangePass: true, realName: username, pseudo: username });
             await DB.set('users', users);
+            pushGlobalNotification("👤 Nouveau compte créé", `Un nouveau compte (${username}) a été créé par l'administrateur.`, username);
             showToast("Compte créé !", "");
         }
 
