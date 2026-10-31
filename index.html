@@ -2773,5 +2773,30 @@
         function logout() { sessionStorage.removeItem('leqg_current_user'); render(); }
         window.onload = init;
 </script>
+    // Script pour ajouter 2 points à la première connexion du jour
+(async function() {
+    let user = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+    if (!user || user.role === 'admin') return; // Optionnel : exclure l'admin si besoin
+    
+    let today = new Date().toISOString().slice(0, 10); // Format YYYY-MM-DD
+    let loginKey = 'leqg_daily_login_' + user.username + '_' + today;
+    
+    if (!localStorage.getItem(loginKey)) {
+        localStorage.setItem(loginKey, 'true');
+        
+        // Récupération et mise à jour des scores
+        let scores = typeof DB !== 'undefined' ? (DB.get('user_scores') || {}) : {};
+        let currentScore = parseFloat(scores[user.username]) || 0;
+        scores[user.username] = parseFloat((currentScore + 2).toFixed(2));
+        
+        if (typeof DB !== 'undefined') {
+            await DB.set('user_scores', scores);
+        }
+        if (typeof showToast === 'function') {
+            showToast("Bonus de connexion !", "Tu as gagné 2 points pour ta première connexion du jour ! 🌟");
+        }
+    }
+})();
+</script>
 </body>
 </html>
