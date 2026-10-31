@@ -700,13 +700,34 @@
             </div>`;
         }
 
+        function validateExternalLink(rawLink) {
+            const link = String(rawLink || '').trim();
+            if (!link) return { valid: true, value: '' };
+            try {
+                const url = new URL(link);
+                if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Protocol');
+                return { valid: true, value: url.href };
+            } catch (_) {
+                return { valid: false, value: link };
+            }
+        }
+
         async function submitQuestWork(e, questId) {
             e.preventDefault();
             let user = getCurrentUser();
             let quests = DB.get('quests') || [];
             let quest = quests.find(q => q.id === questId);
-            let link = document.getElementById('quest-link-inp').value.trim();
+            const linkCheck = validateExternalLink(document.getElementById('quest-link-inp').value);
+            if (!linkCheck.valid) {
+                showToast("Lien invalide", "Veuillez saisir un lien complet commençant par https:// ou http://.");
+                return;
+            }
+            let link = linkCheck.value;
             let comment = document.getElementById('quest-comment-inp').value.trim();
+            if (quest.requireLink && !link) {
+                showToast("Lien requis", "Ce défi nécessite un lien vers votre travail.");
+                return;
+            }
 
             let submissions = DB.get('quest_submissions') || [];
             submissions.push({
@@ -725,7 +746,7 @@
 
             await DB.set('quest_submissions', submissions);
             state.activeQuestId = null;
-            pushGlobalNotification("📤 Nouvelle soumission de défi", `${user.pseudo || user.username} a soumis son travail pour le défi "${quest.title}".`, 'Charlesadmin');
+            await pushGlobalNotification("📤 Nouvelle soumission de défi", `${user.pseudo || user.username} a soumis son travail pour le défi "${quest.title}".`, 'Charlesadmin');
             showToast("Travail soumis !", "Votre participation a bien été transmise au Délégué.");
             render();
         }
