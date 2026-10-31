@@ -688,7 +688,7 @@
                 <form onsubmit="submitQuestWork(event, '${quest.id}')" class="space-y-4">
                     <div>
                         <label class="block font-bold text-amber-200 mb-1">Lien vers votre travail ou votre ressource :</label>
-                        <input type="url" id="quest-link-inp" ${quest.requireUpload ? 'required' : ''} placeholder="https://..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                        <input type="url" id="quest-link-inp" ${quest.requireLink ? 'required' : ''} placeholder="https://..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                         <p class="text-[10px] text-amber-200/60 mt-1">Collez simplement le lien. Aucun fichier n'est envoyé sur LE QG.</p>
                     </div>
                     <div>
@@ -1778,7 +1778,7 @@
 
                             <div id="quest-task-options">
                                 <label class="flex items-center gap-2">
-                                    <input type="checkbox" id="quest-require-upload" class="accent-amber-500 w-4 h-4">
+                                    <input type="checkbox" id="quest-require-link" class="accent-amber-500 w-4 h-4">
                                     <span class="text-amber-200 font-bold">Demander un lien vers une ressource pour ce défi</span>
                                 </label>
                             </div>
@@ -1861,7 +1861,7 @@
             if (state.adminSub === 'download_mgmt') {
                 return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-download mr-2"></i>Gestion du Fichier & Procédure de Téléchargement de l'App</h3>
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-download mr-2"></i>Gestion du lien & Procédure de téléchargement de l'App</h3>
                         <form onsubmit="adminSaveAppDownload(event)" class="space-y-3">
                             <div>
                                 <label class="block text-amber-200 font-bold mb-1">Lien du fichier de l'application (.zip ou .apk) :</label>
@@ -2016,7 +2016,7 @@
                     <div class="space-y-4">
                         <div class="dyn-card border p-6 rounded-3xl space-y-3">
                             <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-file-pdf mr-2"></i>Publier un Sujet Type Bac & Corrigé</h3>
-                            <form onsubmit="adminUploadExam(event)" class="space-y-2">
+                            <form onsubmit="adminAddExamLink(event)" class="space-y-2">
                                 <input type="text" id="ex-title" required placeholder="Titre de l'épreuve..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                                 <input type="url" id="ex-url" required placeholder="Lien URL de la ressource..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                                 <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier le Sujet Bac</button>
@@ -2024,7 +2024,7 @@
                         </div>
                         <div class="dyn-card border p-6 rounded-3xl space-y-3">
                             <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-book-open mr-2"></i>Publier une Fiche de Révision</h3>
-                            <form onsubmit="adminUploadRevision(event)" class="space-y-2">
+                            <form onsubmit="adminAddRevisionLink(event)" class="space-y-2">
                                 <input type="text" id="rev-title" required placeholder="Titre de la fiche..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                                 <input type="url" id="rev-url" required placeholder="Lien URL de la ressource..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                                 <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier la Fiche de Révision</button>
@@ -2038,7 +2038,7 @@
                 return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
                         <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-graduation-cap mr-2"></i>Publier une Formation Post-Bac</h3>
-                        <form onsubmit="adminUploadFormation(event)" class="space-y-3">
+                        <form onsubmit="adminAddFormationLink(event)" class="space-y-3">
                             <input type="text" id="form-title" required placeholder="Intitulé de la formation (ex: BTS MCO, BUT TC...)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
                             <textarea id="form-desc" required placeholder="Description détaillée..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
                             <input type="url" id="form-link" placeholder="Lien d'information URL (optionnel)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
@@ -2179,7 +2179,7 @@
             };
 
             if (type === 'task') {
-                newQuest.requireUpload = document.getElementById('quest-require-upload').checked;
+                newQuest.requireLink = document.getElementById('quest-require-link').checked;
             } else {
                 let blocks = document.querySelectorAll('.qq-block');
                 let questions = [];
@@ -2500,7 +2500,7 @@
             showToast("Sondage lancé !", "Le sondage est en ligne pour les élèves.");
         }
 
-        async function adminUploadFormation(e) {
+        async function adminAddFormationLink(e) {
             e.preventDefault();
             let title = document.getElementById('form-title').value.trim();
             let description = document.getElementById('form-desc').value.trim();
@@ -2560,7 +2560,7 @@
             </div>`;
         }
 
-        async function adminUploadExam(e) {
+        async function adminAddExamLink(e) {
             e.preventDefault();
             let title = document.getElementById('ex-title').value;
             let fileData = document.getElementById('ex-url').value.trim();
@@ -2571,7 +2571,7 @@
             showToast("Sujet Bac publié !", "");
         }
 
-        async function adminUploadRevision(e) {
+        async function adminAddRevisionLink(e) {
             e.preventDefault();
             let title = document.getElementById('rev-title').value;
             let fileData = document.getElementById('rev-url').value.trim();
