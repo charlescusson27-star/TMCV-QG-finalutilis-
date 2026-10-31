@@ -175,8 +175,16 @@
             activeNoteId: null,
             activeQuizId: null,
             activeQuestId: null,
+            quizReviewData: null,
+            editingQuizId: null,
+            editingQuestId: null,
             mailSubTab: 'inbox'
         };
+
+        function getCurrentMonthKey() {
+            let d = new Date();
+            return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+        }
 
         async function init() {
             try {
@@ -190,7 +198,6 @@
                     }
                 }
 
-                // Écoute en arrière-plan sans réinitialiser violemment l'interface utilisateur en cours de saisie
                 for (let k of Object.keys(cloudData)) {
                     db.collection("leqg_data").doc(k).onSnapshot((snap) => {
                         if (snap.exists && snap.data().value !== undefined) {
@@ -262,7 +269,7 @@
             let grids = DB.get('crosswords_grids') || [];
             if (grids.length === 0) return;
 
-            let activeGrid = grids[grids.length - 1];
+            let activeGrid = grids.find(g => g.isWeekly) || grids[grids.length - 1];
             let subs = DB.get('crosswords_submissions') || {};
             let userSubs = subs[user.username] || {};
             let misses = DB.get('crossword_misses') || {};
@@ -340,12 +347,21 @@
         async function pushGlobalNotification(title, message, targetUsername = null) {
             let notifs = DB.get('app_notifications') || [];
             notifs.unshift({
+                id: 'notif_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
                 title, message,
                 target: targetUsername || 'all',
                 date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
             });
             await DB.set('app_notifications', notifs);
             showToast(title, message);
+        }
+
+        async function deleteNotification(notifId) {
+            let notifs = DB.get('app_notifications') || [];
+            let updated = notifs.filter(n => n.id !== notifId);
+            await DB.set('app_notifications', updated);
+            showToast("Notification supprimée", "");
+            render();
         }
 
         function showToast(title, msg) {
@@ -612,10 +628,15 @@
         }
 
         function renderQuestsTab(user) {
-            let quests = DB.get('quests') || [];
+            let quests = (DB.get('quests') || []).filter(q => !q.hidden);
             let submissions = DB.get('quest_submissions') || [];
             let scores = DB.get('user_scores') || {};
             let myPoints = scores[user.username] || 0;
+            let currentMonth = getCurrentMonthKey();
+
+            if (state.quizReviewData !== null) {
+                return renderQuizReviewScreen();
+            }
 
             if (state.activeQuestId !== null) {
                 let quest = quests.find(q => q.id === state.activeQuestId);
@@ -629,7 +650,7 @@
                 <div class="dyn-card border p-6 rounded-3xl flex justify-between items-center">
                     <div>
                         <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-flag-checkered mr-2"></i>Défis & Quêtes de la Classe</h2>
-                        <p class="text-amber-200/70">Accomplissez ces défis et quiz pour gagner des points après validation par le Délégué !</p>
+                        <p class="text-amber-200/70">Réalisez les défis du mois ! Une seule participation par quête est autorisée par mois.</p>
                     </div>
                     <div class="text-right">
                         <span class="text-[10px] text-amber-300 font-bold">Mon Score :</span>
@@ -639,7 +660,7 @@
                 <div class="space-y-3">
                     ${quests.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucun défi ou quête actif pour le moment.</p>' : ''}
                     ${quests.map(q => {
-                        let sub = submissions.find(s => s.questId === q.id && s.username === user.username);
+                        let sub = submissions.find(s => s.questId === q.id && s.username === user.username && s.monthKey === currentMonth);
                         let statusBadge = '';
                         if (sub) {
                             if (sub.validated) statusBadge = `<span class="px-2 py-1 bg-green-500/20 text-green-300 rounded-full font-bold">Validé (+${sub.awardedPoints} pts)</span>`;
@@ -658,7 +679,11 @@
                                 </div>
                                 <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
                                     ${statusBadge}
-                                    ${!sub ? `<button onclick="state.activeQuestId='${q.id}';render()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Participer</button>` : ''}
+                                    ${sub ? `
+                                        <button disabled class="px-4 py-2 bg-stone-800 text-stone-500 font-bold rounded-xl cursor-not-allowed">Effectué ce mois</button>
+                                    ` : `
+                                        <button onclick="state.activeQuestId='${q.id}';render()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Participer</button>
+                                    `}
                                 </div>
                             </div>
                         `;
@@ -729,6 +754,7 @@
                 defaultPoints: quest.points,
                 link,
                 comment,
+                monthKey: getCurrentMonthKey(),
                 validated: false,
                 awardedPoints: 0,
                 date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -773,9 +799,12 @@
             let quest = quests.find(q => q.id === questId);
 
             let score = 0;
+            let userAnswers = [];
             quest.questions.forEach((q, qIdx) => {
                 let selected = document.querySelector(`input[name="qq_${qIdx}"]:checked`);
-                if (selected && parseInt(selected.value) === parseInt(q.correct)) {
+                let val = selected ? parseInt(selected.value) : -1;
+                userAnswers.push(val);
+                if (val === parseInt(q.correct)) {
                     score++;
                 }
             });
@@ -790,6 +819,7 @@
                 defaultPoints: quest.points,
                 quizScore: score,
                 quizTotal: quest.questions.length,
+                monthKey: getCurrentMonthKey(),
                 validated: false,
                 awardedPoints: 0,
                 date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
@@ -797,15 +827,30 @@
 
             await DB.set('quest_submissions', submissions);
             state.activeQuestId = null;
+
+            state.quizReviewData = {
+                title: quest.title,
+                score,
+                total: quest.questions.length,
+                pointsGained: 0,
+                isQuest: true,
+                questions: quest.questions,
+                userAnswers
+            };
+
             pushGlobalNotification("📝 Soumission de Quiz Défi", `${user.pseudo || user.username} a complété le quiz défi "${quest.title}" (${score}/${quest.questions.length}).`, 'Charlesadmin');
             showToast("Quiz soumis !", `Score obtenu : ${score} / ${quest.questions.length}. En attente de validation par le Délégué.`);
             render();
         }
 
         function renderQuizzesTab(user) {
-            let quizzes = DB.get('quizzes') || [];
+            let quizzes = (DB.get('quizzes') || []).filter(q => !q.hidden);
             let submissions = DB.get('quiz_submissions') || {};
             let mySubmissions = submissions[user.username] || {};
+
+            if (state.quizReviewData !== null) {
+                return renderQuizReviewScreen();
+            }
 
             if (state.activeQuizId !== null) {
                 let quiz = quizzes.find(q => q.id === state.activeQuizId);
@@ -840,7 +885,7 @@
                     <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
                         <div>
                             <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-graduation-cap mr-2"></i>Ma Progression & Quiz</h2>
-                            <p class="text-amber-200/70">10 points gagnés par question correcte !</p>
+                            <p class="text-amber-200/70">Points attribués selon le barème configuré par question !</p>
                         </div>
                         <div class="text-right">
                             <span class="text-xs text-amber-300 font-bold">Score Classe :</span>
@@ -895,6 +940,8 @@
                         ${quizzes.map(q => {
                             let sub = mySubmissions[q.id];
                             let pct = sub ? Math.round((sub.score / sub.total) * 100) : null;
+                            let pointsPerQuestion = parseFloat(q.pointsPerQuestion) || 10;
+                            let maxPts = q.questions.length * pointsPerQuestion;
                             return `
                                 <div class="dyn-card border p-5 rounded-2xl flex flex-col justify-between space-y-3">
                                     <div>
@@ -902,7 +949,7 @@
                                             <h4 class="font-bold text-amber-300 text-sm">${q.title}</h4>
                                             <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold text-[10px]">${q.subject || 'Général'}</span>
                                         </div>
-                                        <p class="text-[10px] text-amber-200/60 mt-1">${q.questions.length} question(s) - ${q.questions.length * 10} pts max</p>
+                                        <p class="text-[10px] text-amber-200/60 mt-1">${q.questions.length} question(s) - ${pointsPerQuestion} pts/question (${maxPts} pts max)</p>
                                     </div>
                                     
                                     <div class="flex justify-between items-center border-t border-amber-900/30 pt-3">
@@ -925,10 +972,11 @@
         }
 
         function renderQuizPlayer(user, quiz) {
+            let ptsPerQ = parseFloat(quiz.pointsPerQuestion) || 10;
             return `<div class="max-w-2xl mx-auto dyn-card border p-8 rounded-3xl space-y-6 text-xs shadow-2xl">
                 <div class="flex justify-between items-center border-b border-amber-900/40 pb-3">
                     <div>
-                        <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold text-[10px]">${quiz.subject || 'Général'}</span>
+                        <span class="px-2 py-0.5 bg-amber-500/20 text-amber-300 rounded font-bold text-[10px]">${quiz.subject || 'Général'} (${ptsPerQ} pts/q)</span>
                         <h2 class="text-lg font-black text-amber-400 mt-1">${quiz.title}</h2>
                     </div>
                     <button onclick="state.activeQuizId=null;render()" class="px-3 py-1 bg-stone-900 text-amber-200 border rounded-xl font-bold">Quitter</button>
@@ -961,10 +1009,15 @@
             let quiz = quizzes.find(q => q.id === quizId);
             if (!quiz) return;
 
+            let ptsPerQ = parseFloat(quiz.pointsPerQuestion) || 10;
             let score = 0;
+            let userAnswers = [];
+
             quiz.questions.forEach((q, qIdx) => {
                 let selected = document.querySelector(`input[name="q_${qIdx}"]:checked`);
-                if (selected && parseInt(selected.value) === parseInt(q.correct)) {
+                let val = selected ? parseInt(selected.value) : -1;
+                userAnswers.push(val);
+                if (val === parseInt(q.correct)) {
                     score++;
                 }
             });
@@ -976,16 +1029,90 @@
             submissions[user.username][quizId] = { score, total: quiz.questions.length, date: new Date().toLocaleDateString('fr-FR') };
             await DB.set('quiz_submissions', submissions);
 
-            let pointsGained = Math.max(0, score - previousScore) * 10;
+            let pointsGained = parseFloat((Math.max(0, score - previousScore) * ptsPerQ).toFixed(2));
             if (pointsGained > 0) {
                 let scores = DB.get('user_scores') || {};
-                scores[user.username] = (scores[user.username] || 0) + pointsGained;
+                let current = parseFloat(scores[user.username] || 0);
+                scores[user.username] = parseFloat((current + pointsGained).toFixed(2));
                 await DB.set('user_scores', scores);
             }
 
             state.activeQuizId = null;
+            state.quizReviewData = {
+                title: quiz.title,
+                score,
+                total: quiz.questions.length,
+                pointsGained,
+                isQuest: false,
+                questions: quiz.questions,
+                userAnswers
+            };
+
             showToast("Quiz terminé !", `Votre score : ${score} / ${quiz.questions.length}. ${pointsGained > 0 ? `+${pointsGained} pts au classement !` : ''}`);
             render();
+        }
+
+        function renderQuizReviewScreen() {
+            let data = state.quizReviewData;
+            if (!data) return '';
+
+            return `<div class="max-w-3xl mx-auto dyn-card border p-8 rounded-3xl space-y-6 text-xs shadow-2xl">
+                <div class="flex justify-between items-center border-b border-amber-900/40 pb-4">
+                    <div>
+                        <span class="px-2.5 py-1 bg-amber-500/20 text-amber-400 rounded-full font-bold text-[10px]">Corrigé Détaillé</span>
+                        <h2 class="text-xl font-black text-amber-300 mt-1">${data.title}</h2>
+                    </div>
+                    <button onclick="state.quizReviewData=null;render()" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Fermer le Corrigé</button>
+                </div>
+
+                <div class="p-5 bg-stone-900 rounded-2xl border text-center space-y-2">
+                    <h3 class="text-lg font-bold text-amber-200">Bilan des Résultats</h3>
+                    <div class="text-3xl font-black text-white">${data.score} / ${data.total}</div>
+                    ${data.pointsGained > 0 ? `<p class="text-green-400 font-bold">+${data.pointsGained} points ajoutés à votre score général !</p>` : ''}
+                    ${data.isQuest ? `<p class="text-amber-300 font-bold">Quiz soumis pour validation des points par le Délégué.</p>` : ''}
+                </div>
+
+                <div class="space-y-4">
+                    <h3 class="font-bold text-amber-300 text-sm border-b border-amber-900/40 pb-2"><i class="fa-solid fa-list-check mr-2"></i>Détail des réponses & explications :</h3>
+                    ${data.questions.map((q, idx) => {
+                        let userAns = data.userAnswers[idx];
+                        let correctAns = parseInt(q.correct);
+                        let isCorrect = userAns === correctAns;
+
+                        return `
+                            <div class="p-4 rounded-2xl border ${isCorrect ? 'bg-green-950/40 border-green-500/40' : 'bg-red-950/40 border-red-500/40'} space-y-3">
+                                <div class="flex justify-between items-start gap-2">
+                                    <h4 class="font-bold text-amber-100 text-sm">Question ${idx + 1} : ${q.text}</h4>
+                                    <span class="px-2 py-1 rounded text-[10px] font-bold ${isCorrect ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}">
+                                        ${isCorrect ? 'Correct ✅' : 'Incorrect ❌'}
+                                    </span>
+                                </div>
+                                <div class="space-y-1.5 pl-2">
+                                    ${q.options.map((opt, oIdx) => {
+                                        let style = 'bg-stone-900 border-amber-900/30 text-amber-200/70';
+                                        let icon = '';
+                                        if (oIdx === correctAns) {
+                                            style = 'bg-green-900/50 border-green-500 text-green-200 font-bold';
+                                            icon = '<i class="fa-solid fa-check text-green-400 mr-2"></i>';
+                                        } else if (oIdx === userAns && !isCorrect) {
+                                            style = 'bg-red-900/50 border-red-500 text-red-200 font-bold line-through';
+                                            icon = '<i class="fa-solid fa-xmark text-red-400 mr-2"></i>';
+                                        }
+
+                                        return `
+                                            <div class="p-2.5 rounded-xl border text-xs ${style}">
+                                                ${icon}${opt} ${oIdx === userAns ? ' (Votre choix)' : ''}
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+
+                <button onclick="state.quizReviewData=null;render()" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-sm">Retour aux Quiz</button>
+            </div>`;
         }
 
         function renderNotifsSection(user) {
@@ -1000,15 +1127,20 @@
                 <div class="space-y-3">
                     ${myNotifs.length === 0 ? '<p class="text-amber-200/50 text-center py-6">Aucune notification pour le moment.</p>' : ''}
                     ${myNotifs.map(n => `
-                        <div class="dyn-card border p-4 rounded-2xl flex items-start gap-3">
-                            <div class="p-2 bg-amber-500/20 text-amber-400 rounded-xl"><i class="fa-solid fa-circle-info"></i></div>
-                            <div class="flex-1">
-                                <div class="flex justify-between items-center">
-                                    <h4 class="font-bold text-amber-200 text-sm">${n.title}</h4>
-                                    <span class="text-[10px] text-amber-200/50">${n.date}</span>
+                        <div class="dyn-card border p-4 rounded-2xl flex items-start justify-between gap-3">
+                            <div class="flex items-start gap-3 flex-1">
+                                <div class="p-2 bg-amber-500/20 text-amber-400 rounded-xl"><i class="fa-solid fa-circle-info"></i></div>
+                                <div class="flex-1">
+                                    <div class="flex justify-between items-center">
+                                        <h4 class="font-bold text-amber-200 text-sm">${n.title}</h4>
+                                        <span class="text-[10px] text-amber-200/50">${n.date}</span>
+                                    </div>
+                                    <p class="text-amber-100 mt-1">${n.message}</p>
                                 </div>
-                                <p class="text-amber-100 mt-1">${n.message}</p>
                             </div>
+                            <button onclick="deleteNotification('${n.id}')" title="Supprimer la notification" class="p-2 text-stone-500 hover:text-red-400 transition rounded-lg hover:bg-stone-900">
+                                <i class="fa-solid fa-trash text-sm"></i>
+                            </button>
                         </div>
                     `).join('')}
                 </div>
@@ -1075,10 +1207,8 @@
 
         function renderCrosswordsSection(user) {
             let grids = DB.get('crosswords_grids') || [];
-            let activeGrid = null;
-            if (grids.length > 0) {
-                activeGrid = grids[grids.length - 1];
-            }
+            let weeklyGrid = grids.find(g => g.isWeekly) || (grids.length > 0 ? grids[grids.length - 1] : null);
+            let freeGrids = grids.filter(g => !g.isWeekly);
 
             let misses = DB.get('crossword_misses') || {};
             let userMisses = misses[user.username] ? Object.keys(misses[user.username]).length : 0;
@@ -1089,8 +1219,8 @@
                         <div class="flex items-center gap-3">
                             <div class="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl text-xl"><i class="fa-solid fa-puzzle-piece"></i></div>
                             <div>
-                                <h3 class="font-black text-lg text-amber-400">Grille de Mots Croisés de la Semaine</h3>
-                                <p class="text-xs text-amber-200/60">Répondez à la grille hebdomadaire pour valider votre participation.</p>
+                                <h3 class="font-black text-lg text-amber-400">Mots Croisés MCV</h3>
+                                <p class="text-xs text-amber-200/60">Répondez aux grilles de la semaine et d'entraînement pour réviser !</p>
                             </div>
                         </div>
                         <div class="p-3 bg-stone-900 border rounded-2xl text-right">
@@ -1100,24 +1230,47 @@
                         </div>
                     </div>
 
-                    ${!activeGrid ? `
-                        <p class="text-amber-200/50 text-center py-8">Aucune grille de mots croisés n'a encore été publiée par le Délégué.</p>
+                    ${!weeklyGrid ? `
+                        <p class="text-amber-200/50 text-center py-4">Aucune grille de la semaine n'est actuellement définie.</p>
                     ` : `
                         <div class="p-5 bg-stone-900 rounded-2xl border border-amber-500/40 space-y-4">
-                            <h4 class="font-black text-sm text-amber-300">${activeGrid.title} (${activeGrid.words.length} mots)</h4>
+                            <div class="flex justify-between items-center">
+                                <h4 class="font-black text-sm text-amber-300">⭐ Grille Hebdomadaire : ${weeklyGrid.title} (${weeklyGrid.words.length} mots)</h4>
+                                <span class="px-2.5 py-1 bg-amber-500/20 text-amber-300 rounded font-bold text-[10px]">${weeklyGrid.pointsPerWord || 1} pts par mot trouvé</span>
+                            </div>
                             <div class="space-y-3">
-                                ${activeGrid.words.map((w, idx) => `
+                                ${weeklyGrid.words.map((w, idx) => `
                                     <div class="p-3 bg-stone-950 rounded-xl border space-y-2">
                                         <p class="font-bold text-amber-100"><b>Indice ${idx+1} :</b> ${w.clue}</p>
                                         <div class="flex gap-2">
                                             <input type="text" id="cw-word-${idx}" placeholder="Votre réponse..." class="p-2 bg-stone-900 border rounded-xl text-amber-300 font-bold uppercase flex-1">
-                                            <button onclick="checkWeeklyCrosswordAnswer('${activeGrid.id}', ${idx}, '${w.answer}')" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Vérifier</button>
+                                            <button onclick="checkWeeklyCrosswordAnswer('${weeklyGrid.id}', ${idx}, '${w.answer}')" class="px-4 py-2 dyn-btn text-white font-bold rounded-xl">Vérifier</button>
                                         </div>
                                     </div>
                                 `).join('')}
                             </div>
                         </div>
                     `}
+
+                    ${freeGrids.length > 0 ? `
+                        <div class="space-y-4 pt-4 border-t border-amber-900/40">
+                            <h4 class="font-black text-sm text-amber-400">🎮 Grilles d'Entraînement Libres</h4>
+                            <div class="space-y-3">
+                                ${freeGrids.map(g => `
+                                    <div class="p-4 bg-stone-900 rounded-2xl border space-y-3">
+                                        <h5 class="font-bold text-amber-200">${g.title} (${g.words.length} mots)</h5>
+                                        <div class="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                            ${g.words.map((w, idx) => `
+                                                <div class="p-2 bg-stone-950 rounded-lg border text-amber-100 font-medium">
+                                                    <b>Indice ${idx+1} :</b> ${w.clue}
+                                                </div>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
                 </div>
             `;
         }
@@ -1531,7 +1684,7 @@
         }
 
         function renderFormationsTab(u) {
-            let formations = DB.get('formations') || [];
+            let formations = (DB.get('formations') || []).filter(f => !f.hidden);
             return `<div class="max-w-3xl mx-auto space-y-4 text-xs">
                 <div class="dyn-card border p-6 rounded-3xl space-y-2">
                     <h2 class="text-xl font-black text-amber-400"><i class="fa-solid fa-graduation-cap mr-2"></i>Orientation & Formations Post-Bac</h2>
@@ -1700,7 +1853,7 @@
                                         </div>
                                         <div class="flex flex-wrap items-center gap-1">
                                             <div class="flex items-center gap-1 bg-stone-950 p-1 rounded-lg border">
-                                                <input type="number" step="0.5" id="pts-val-${u.username}" placeholder="Pts" class="w-16 p-1 bg-stone-900 border rounded text-amber-200 font-bold text-center">
+                                                <input type="number" step="any" id="pts-val-${u.username}" placeholder="Pts" class="w-16 p-1 bg-stone-900 border rounded text-amber-200 font-bold text-center">
                                                 <button onclick="adminAddPoints('${u.username}', 1)" class="px-2 py-1 bg-green-900/50 text-green-300 rounded font-bold">+</button>
                                                 <button onclick="adminAddPoints('${u.username}', -1)" class="px-2 py-1 bg-red-900/50 text-red-300 rounded font-bold">-</button>
                                             </div>
@@ -1748,7 +1901,7 @@
 
                             <div>
                                 <label class="block font-bold text-amber-200 mb-1">Nombre de points à retirer au score (optionnel) :</label>
-                                <input type="number" step="0.5" id="sanc-pts" placeholder="Ex: 10 ou 17.90" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                                <input type="number" step="any" id="sanc-pts" placeholder="Ex: 10 ou 17.90" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
                             </div>
 
                             <div class="p-3 bg-stone-950 rounded-xl border border-amber-900/40 space-y-2">
@@ -1788,32 +1941,33 @@
             }
 
             if (state.adminSub === 'quests') {
+                let quests = DB.get('quests') || [];
                 return `
-                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-flag-checkered mr-2"></i>Création de Quêtes, Défis & Quiz</h3>
-                        <form onsubmit="adminCreateQuestOrQuiz(event)" class="space-y-4">
+                    <div class="dyn-card border p-6 rounded-3xl space-y-6">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-flag-checkered mr-2"></i>Gestion & Création des Quêtes et Défis</h3>
+                        <form onsubmit="adminCreateQuestOrQuiz(event)" class="space-y-4 p-4 bg-stone-900/80 rounded-2xl border">
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
                                 <div>
                                     <label class="block font-bold text-amber-200 mb-1">Type de quête :</label>
-                                    <select id="quest-type" onchange="toggleQuestTypeFields(this.value)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-300 font-bold">
+                                    <select id="quest-type" onchange="toggleQuestTypeFields(this.value)" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-300 font-bold">
                                         <option value="task">Défi / Tâche</option>
                                         <option value="quiz">Quiz thématique (10 questions)</option>
                                     </select>
                                 </div>
                                 <div>
                                     <label class="block font-bold text-amber-200 mb-1">Points indicatifs :</label>
-                                    <input type="number" id="quest-pts" required placeholder="Ex: 50" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                                    <input type="number" step="any" id="quest-pts" required placeholder="Ex: 50" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100">
                                 </div>
                             </div>
 
                             <div>
                                 <label class="block font-bold text-amber-200 mb-1">Titre :</label>
-                                <input type="text" id="quest-title" required placeholder="Intitulé du défi ou du quiz..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                <input type="text" id="quest-title" required placeholder="Intitulé du défi ou du quiz..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
                             </div>
 
                             <div>
                                 <label class="block font-bold text-amber-200 mb-1">Description / Consignes :</label>
-                                <textarea id="quest-desc" required placeholder="Décrivez le travail attendu..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
+                                <textarea id="quest-desc" required placeholder="Décrivez le travail attendu..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
                             </div>
 
                             <div id="quest-task-options">
@@ -1825,13 +1979,29 @@
 
                             <div id="quest-quiz-builder" class="hidden space-y-3 border-t border-amber-900/40 pt-3">
                                 <h4 class="font-bold text-amber-400">Questions du Quiz (10 questions)</h4>
-                                <div id="quest-quiz-questions-container" class="space-y-3 max-h-60 overflow-y-auto pr-2">
-                                </div>
+                                <div id="quest-quiz-questions-container" class="space-y-3 max-h-60 overflow-y-auto pr-2"></div>
                                 <button type="button" onclick="addQuestQuizQuestion()" class="px-3 py-1.5 bg-stone-800 text-amber-300 font-bold rounded-xl text-xs"><i class="fa-solid fa-plus mr-1"></i> Ajouter une question</button>
                             </div>
 
                             <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl">Publier la Quête ou le Quiz</button>
                         </form>
+
+                        <div class="space-y-3 pt-4 border-t border-amber-900/40">
+                            <h4 class="font-bold text-amber-300 text-sm">Quêtes & Défis existants</h4>
+                            ${quests.length === 0 ? '<p class="text-amber-200/40 italic">Aucune quête.</p>' : ''}
+                            ${quests.map(q => `
+                                <div class="p-4 bg-stone-900 rounded-2xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                    <div>
+                                        <h5 class="font-bold text-amber-200 text-sm">${q.title} (${q.points} pts)</h5>
+                                        <p class="text-amber-100/70 text-[11px]">${q.description}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="adminToggleHideQuest('${q.id}')" class="px-3 py-1.5 bg-stone-800 text-amber-300 border rounded-xl font-bold">${q.hidden ? 'Afficher' : 'Masquer'}</button>
+                                        <button onclick="adminDeleteQuest('${q.id}')" class="px-3 py-1.5 bg-red-900/50 text-red-300 border border-red-500/30 rounded-xl font-bold">Supprimer</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 `;
             }
@@ -1866,7 +2036,7 @@
 
                                     <div class="flex items-center gap-2 pt-2 border-t border-amber-900/30">
                                         <span class="font-bold text-amber-200">Attribuer des points :</span>
-                                        <input type="number" step="0.5" id="award-pts-${sub.id}" value="${sub.defaultPoints || 10}" class="w-20 p-1.5 bg-stone-950 border rounded-xl text-amber-300 font-bold text-center">
+                                        <input type="number" step="any" id="award-pts-${sub.id}" value="${sub.defaultPoints || 10}" class="w-24 p-1.5 bg-stone-950 border rounded-xl text-amber-300 font-bold text-center">
                                         <button onclick="adminValidateQuestSubmission('${sub.id}', true)" class="px-4 py-1.5 bg-green-600 text-white font-bold rounded-xl">Valider & Créditer</button>
                                         <button onclick="adminValidateQuestSubmission('${sub.id}', false)" class="px-4 py-1.5 bg-red-900/60 text-red-200 font-bold rounded-xl">Refuser</button>
                                     </div>
@@ -1880,10 +2050,21 @@
             if (state.adminSub === 'crosswords') {
                 return `
                     <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-puzzle-piece mr-2"></i>Création & Publication des Mots Croisés de la Semaine</h3>
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-puzzle-piece mr-2"></i>Création & Publication des Mots Croisés</h3>
                         <p class="text-amber-200/70 text-[11px]">Règlement : Il faut au minimum <strong>10 mots</strong> par grille.</p>
                         <form onsubmit="adminCreateCrosswordGrid(event)" class="space-y-4">
-                            <input type="text" id="cw-grid-title" required placeholder="Titre de la grille (ex: Semaine 1 - Droit)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <input type="text" id="cw-grid-title" required placeholder="Titre de la grille (ex: Semaine 1 - Droit)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Points attribués par mot trouvé :</label>
+                                    <input type="number" step="any" id="cw-pts-per-word" required value="1" placeholder="Ex: 1 ou 2.5" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                </div>
+                            </div>
+
+                            <div class="flex items-center gap-2">
+                                <input type="checkbox" id="cw-is-weekly" checked class="accent-amber-500 w-4 h-4">
+                                <label for="cw-is-weekly" class="text-amber-300 font-bold">Définir comme Grille de la Semaine (Soumise au contrôle hebdomadaire)</label>
+                            </div>
                             
                             <div id="cw-words-container" class="space-y-3 max-h-60 overflow-y-auto pr-2">
                                 <div class="grid grid-cols-2 gap-2 cw-word-row">
@@ -1892,7 +2073,7 @@
                                 </div>
                             </div>
                             <button type="button" onclick="addCrosswordWordRow()" class="px-3 py-1.5 bg-stone-800 text-amber-300 font-bold rounded-xl text-xs"><i class="fa-solid fa-plus mr-1"></i> Ajouter un mot (Min 10)</button>
-                            <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-xs">Publier la Grille de la Semaine</button>
+                            <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-xs">Publier la Grille de Mots Croisés</button>
                         </form>
                     </div>
                 `;
@@ -1918,34 +2099,39 @@
             }
 
             if (state.adminSub === 'quizzes') {
+                let quizzes = DB.get('quizzes') || [];
                 return `
-                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-circle-question mr-2"></i>Créer et Publier un Nouveau Quiz</h3>
-                        <form onsubmit="adminCreateQuiz(event)" class="space-y-4">
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div class="dyn-card border p-6 rounded-3xl space-y-6">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-circle-question mr-2"></i>Créer et Gérer les Quiz</h3>
+                        <form onsubmit="adminCreateQuiz(event)" class="space-y-4 p-4 bg-stone-900/80 rounded-2xl border">
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
                                 <div>
                                     <label class="block font-bold text-amber-200 mb-1">Titre du Quiz :</label>
-                                    <input type="text" id="quiz-title" required placeholder="Titre (ex: Contrats commerciaux)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                    <input type="text" id="quiz-title" required placeholder="Titre (ex: Contrats commerciaux)..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
                                 </div>
                                 <div>
                                     <label class="block font-bold text-amber-200 mb-1">Matière :</label>
-                                    <input type="text" id="quiz-subject" required placeholder="Matière (ex: Droit, Vente, Éco)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 font-bold">
+                                    <input type="text" id="quiz-subject" required placeholder="Matière (ex: Droit, Vente, Éco)..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
+                                </div>
+                                <div>
+                                    <label class="block font-bold text-amber-200 mb-1">Points par bonne réponse :</label>
+                                    <input type="number" step="any" id="quiz-pts-per-q" required value="10" placeholder="Ex: 5 ou 10" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 font-bold">
                                 </div>
                             </div>
 
                             <div id="quiz-questions-builder" class="space-y-4 pt-2">
-                                <div class="p-4 bg-stone-900/80 rounded-2xl border space-y-3 quiz-q-block">
+                                <div class="p-4 bg-stone-950/80 rounded-2xl border space-y-3 quiz-q-block">
                                     <h4 class="font-bold text-amber-400 text-xs">Question 1</h4>
-                                    <input type="text" placeholder="Intitulé de la question..." required class="w-full p-2 bg-stone-950 border rounded-xl text-amber-100 q-text">
+                                    <input type="text" placeholder="Intitulé de la question..." required class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 q-text">
                                     <div class="grid grid-cols-2 gap-2">
-                                        <input type="text" placeholder="Option A" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-0">
-                                        <input type="text" placeholder="Option B" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-1">
-                                        <input type="text" placeholder="Option C" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-2">
-                                        <input type="text" placeholder="Option D" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-3">
+                                        <input type="text" placeholder="Option A" required class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-0">
+                                        <input type="text" placeholder="Option B" required class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-1">
+                                        <input type="text" placeholder="Option C" class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-2">
+                                        <input type="text" placeholder="Option D" class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-3">
                                     </div>
                                     <div>
                                         <label class="block text-[11px] font-bold text-amber-300">Bonne réponse :</label>
-                                        <select class="p-2 bg-stone-950 border rounded-xl text-amber-400 font-bold q-correct">
+                                        <select class="p-2 bg-stone-900 border rounded-xl text-amber-400 font-bold q-correct">
                                             <option value="0">Option A</option>
                                             <option value="1">Option B</option>
                                             <option value="2">Option C</option>
@@ -1958,6 +2144,23 @@
                             <button type="button" onclick="addAdminQuizQuestionRow()" class="px-4 py-2 bg-stone-800 text-amber-300 font-bold rounded-xl text-xs"><i class="fa-solid fa-plus mr-1"></i> Ajouter une question</button>
                             <button type="submit" class="w-full py-3 dyn-btn text-white font-bold rounded-xl text-xs">Publier le Quiz pour les Élèves</button>
                         </form>
+
+                        <div class="space-y-3 pt-4 border-t border-amber-900/40">
+                            <h4 class="font-bold text-amber-300 text-sm">Quiz publiés</h4>
+                            ${quizzes.length === 0 ? '<p class="text-amber-200/40 italic">Aucun quiz publié.</p>' : ''}
+                            ${quizzes.map(q => `
+                                <div class="p-4 bg-stone-900 rounded-2xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                    <div>
+                                        <h5 class="font-bold text-amber-200 text-sm">${q.title} (${q.subject})</h5>
+                                        <p class="text-amber-100/70 text-[11px]">${q.questions.length} questions - ${q.pointsPerQuestion || 10} pts/question</p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="adminToggleHideQuiz('${q.id}')" class="px-3 py-1.5 bg-stone-800 text-amber-300 border rounded-xl font-bold">${q.hidden ? 'Afficher' : 'Masquer'}</button>
+                                        <button onclick="adminDeleteQuiz('${q.id}')" class="px-3 py-1.5 bg-red-900/50 text-red-300 border border-red-500/30 rounded-xl font-bold">Supprimer</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 `;
             }
@@ -2075,15 +2278,33 @@
             }
 
             if (state.adminSub === 'formations') {
+                let formations = DB.get('formations') || [];
                 return `
-                    <div class="dyn-card border p-6 rounded-3xl space-y-4">
-                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-graduation-cap mr-2"></i>Publier une Formation Post-Bac</h3>
-                        <form onsubmit="adminAddFormationLink(event)" class="space-y-3">
-                            <input type="text" id="form-title" required placeholder="Intitulé de la formation (ex: BTS MCO, BUT TC...)" class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
-                            <textarea id="form-desc" required placeholder="Description détaillée..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
-                            <input type="url" id="form-link" placeholder="Lien d'information URL (optionnel)..." class="w-full p-2.5 bg-stone-900 border rounded-xl text-amber-100">
+                    <div class="dyn-card border p-6 rounded-3xl space-y-6">
+                        <h3 class="font-bold text-amber-300 text-sm"><i class="fa-solid fa-graduation-cap mr-2"></i>Publier et Gérer les Formations Post-Bac</h3>
+                        <form onsubmit="adminAddFormationLink(event)" class="space-y-3 p-4 bg-stone-900/80 rounded-2xl border">
+                            <input type="text" id="form-title" required placeholder="Intitulé de la formation (ex: BTS MCO, BUT TC...)" class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100">
+                            <textarea id="form-desc" required placeholder="Description détaillée..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100 h-24 resize-none"></textarea>
+                            <input type="url" id="form-link" placeholder="Lien d'information URL (optionnel)..." class="w-full p-2.5 bg-stone-950 border rounded-xl text-amber-100">
                             <button type="submit" class="w-full py-2.5 dyn-btn text-white font-bold rounded-xl">Publier la Formation</button>
                         </form>
+
+                        <div class="space-y-3 pt-4 border-t border-amber-900/40">
+                            <h4 class="font-bold text-amber-300 text-sm">Formations publiées</h4>
+                            ${formations.length === 0 ? '<p class="text-amber-200/40 italic">Aucune formation créée.</p>' : ''}
+                            ${formations.map(f => `
+                                <div class="p-4 bg-stone-900 rounded-2xl border flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                    <div>
+                                        <h5 class="font-bold text-amber-200 text-sm">${f.title}</h5>
+                                        <p class="text-amber-100/70 text-[11px]">${f.description}</p>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <button onclick="adminToggleHideFormation('${f.id}')" class="px-3 py-1.5 bg-stone-800 text-amber-300 border rounded-xl font-bold">${f.hidden ? 'Afficher' : 'Masquer'}</button>
+                                        <button onclick="adminDeleteFormation('${f.id}')" class="px-3 py-1.5 bg-red-900/50 text-red-300 border border-red-500/30 rounded-xl font-bold">Supprimer</button>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
                     </div>
                 `;
             }
@@ -2227,7 +2448,8 @@
                 type,
                 title,
                 description,
-                points
+                points,
+                hidden: false
             };
 
             if (type === 'task') {
@@ -2258,6 +2480,26 @@
             await DB.set('quests', quests);
             pushGlobalNotification("🎯 Nouveau Défi / Quiz", `Un nouveau défi "${title}" a été publié !`);
             showToast("Publié avec succès !", "");
+            render();
+        }
+
+        async function adminToggleHideQuest(questId) {
+            let quests = DB.get('quests') || [];
+            let q = quests.find(x => x.id === questId);
+            if (q) {
+                q.hidden = !q.hidden;
+                await DB.set('quests', quests);
+                showToast("Visibilité modifiée", "");
+                render();
+            }
+        }
+
+        async function adminDeleteQuest(questId) {
+            if (!confirm("Voulez-vous supprimer cette quête ?")) return;
+            let quests = DB.get('quests') || [];
+            let updated = quests.filter(x => x.id !== questId);
+            await DB.set('quests', updated);
+            showToast("Quête supprimée", "");
             render();
         }
 
@@ -2306,8 +2548,13 @@
         async function adminCreateCrosswordGrid(e) {
             e.preventDefault();
             let titleEl = document.getElementById('cw-grid-title');
-            if (!titleEl) return;
+            let ptsEl = document.getElementById('cw-pts-per-word');
+            let weeklyEl = document.getElementById('cw-is-weekly');
+            if (!titleEl || !ptsEl) return;
             let title = titleEl.value.trim();
+            let pointsPerWord = parseFloat(ptsEl.value) || 1;
+            let isWeekly = weeklyEl ? weeklyEl.checked : false;
+
             let rows = document.querySelectorAll('.cw-word-row');
             let words = [];
 
@@ -2326,10 +2573,14 @@
             }
 
             let grids = DB.get('crosswords_grids') || [];
-            let newGrid = { id: 'cw_' + Date.now(), title, words };
+            if (isWeekly) {
+                grids.forEach(g => g.isWeekly = false);
+            }
+
+            let newGrid = { id: 'cw_' + Date.now(), title, pointsPerWord, isWeekly, words };
             grids.push(newGrid);
             await DB.set('crosswords_grids', grids);
-            pushGlobalNotification("🧩 Nouvelle grille Mots Croisés", `La grille hebdomadaire "${title}" a été publiée !`);
+            pushGlobalNotification("🧩 Nouvelle grille Mots Croisés", `La grille "${title}" a été publiée !`);
             showToast("Grille publiée !", "La grille de mots croisés est en ligne.");
             render();
         }
@@ -2418,19 +2669,19 @@
             if (!container) return;
             let qCount = container.children.length + 1;
             let div = document.createElement('div');
-            div.className = "p-4 bg-stone-900/80 rounded-2xl border space-y-3 quiz-q-block";
+            div.className = "p-4 bg-stone-950/80 rounded-2xl border space-y-3 quiz-q-block";
             div.innerHTML = `
                 <h4 class="font-bold text-amber-400 text-xs">Question ${qCount}</h4>
-                <input type="text" placeholder="Intitulé de la question..." required class="w-full p-2 bg-stone-950 border rounded-xl text-amber-100 q-text">
+                <input type="text" placeholder="Intitulé de la question..." required class="w-full p-2 bg-stone-900 border rounded-xl text-amber-100 q-text">
                 <div class="grid grid-cols-2 gap-2">
-                    <input type="text" placeholder="Option A" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-0">
-                    <input type="text" placeholder="Option B" required class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-1">
-                    <input type="text" placeholder="Option C" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-2">
-                    <input type="text" placeholder="Option D" class="p-2 bg-stone-950 border rounded-xl text-amber-100 q-opt-3">
+                    <input type="text" placeholder="Option A" required class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-0">
+                    <input type="text" placeholder="Option B" required class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-1">
+                    <input type="text" placeholder="Option C" class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-2">
+                    <input type="text" placeholder="Option D" class="p-2 bg-stone-900 border rounded-xl text-amber-100 q-opt-3">
                 </div>
                 <div>
                     <label class="block text-[11px] font-bold text-amber-300">Bonne réponse :</label>
-                    <select class="p-2 bg-stone-950 border rounded-xl text-amber-400 font-bold q-correct">
+                    <select class="p-2 bg-stone-900 border rounded-xl text-amber-400 font-bold q-correct">
                         <option value="0">Option A</option>
                         <option value="1">Option B</option>
                         <option value="2">Option C</option>
@@ -2445,9 +2696,12 @@
             e.preventDefault();
             let tEl = document.getElementById('quiz-title');
             let sEl = document.getElementById('quiz-subject');
-            if (!tEl || !sEl) return;
+            let pEl = document.getElementById('quiz-pts-per-q');
+            if (!tEl || !sEl || !pEl) return;
             let title = tEl.value.trim();
             let subject = sEl.value.trim();
+            let pointsPerQuestion = parseFloat(pEl.value) || 10;
+
             let blocks = document.querySelectorAll('.quiz-q-block');
             let questions = [];
 
@@ -2475,12 +2729,34 @@
                 id: 'quiz_' + Date.now(),
                 title,
                 subject,
+                pointsPerQuestion,
+                hidden: false,
                 questions
             };
             quizzes.unshift(newQuiz);
             await DB.set('quizzes', quizzes);
             pushGlobalNotification("📝 Nouveau Quiz", `Un nouveau quiz "${title}" (${subject}) a été publié par le Délégué !`);
             showToast("Quiz publié !", "Le quiz est désormais accessible dans l'onglet Quiz.");
+            render();
+        }
+
+        async function adminToggleHideQuiz(quizId) {
+            let quizzes = DB.get('quizzes') || [];
+            let q = quizzes.find(x => x.id === quizId);
+            if (q) {
+                q.hidden = !q.hidden;
+                await DB.set('quizzes', quizzes);
+                showToast("Visibilité modifiée", "");
+                render();
+            }
+        }
+
+        async function adminDeleteQuiz(quizId) {
+            if (!confirm("Voulez-vous supprimer ce quiz ?")) return;
+            let quizzes = DB.get('quizzes') || [];
+            let updated = quizzes.filter(x => x.id !== quizId);
+            await DB.set('quizzes', updated);
+            showToast("Quiz supprimé", "");
             render();
         }
 
@@ -2540,7 +2816,7 @@
             showToast("Export Excel réussi !", "Fichier .xlsx téléchargé.");
         }
 
-        function exportSingleAccountExcel() {
+        async function exportSingleAccountExcel() {
             let selectEl = document.getElementById('export-username-select');
             if (!selectEl) return;
             let uname = selectEl.value;
@@ -2606,10 +2882,30 @@
             let description = dEl.value.trim();
             let link = lEl ? lEl.value.trim() : '';
             let formations = DB.get('formations') || [];
-            formations.unshift({ title, description, link });
+            formations.unshift({ id: 'form_' + Date.now(), title, description, link, hidden: false });
             await DB.set('formations', formations);
             pushGlobalNotification("🎓 Nouvelle formation", `Une formation post-bac a été ajoutée par le Délégué : "${title}"`);
             showToast("Formation publiée !", "");
+            render();
+        }
+
+        async function adminToggleHideFormation(formId) {
+            let formations = DB.get('formations') || [];
+            let f = formations.find(x => x.id === formId);
+            if (f) {
+                f.hidden = !f.hidden;
+                await DB.set('formations', formations);
+                showToast("Visibilité modifiée", "");
+                render();
+            }
+        }
+
+        async function adminDeleteFormation(formId) {
+            if (!confirm("Voulez-vous supprimer cette formation ?")) return;
+            let formations = DB.get('formations') || [];
+            let updated = formations.filter(x => x.id !== formId);
+            await DB.set('formations', updated);
+            showToast("Formation supprimée", "");
             render();
         }
 
